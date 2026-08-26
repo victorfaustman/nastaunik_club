@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 import aiosqlite
-from aiohttp import ClientSession
+from aiohttp import ClientSession, ClientTimeout
 from aiohttp import web
 from dotenv import load_dotenv
 
@@ -106,6 +106,8 @@ class WebSettings:
     club_invite_link: str
     club_chat_id: str
     public_channel_id: str
+    public_channel_member_count: int | None
+    public_channel_live_count: bool
 
 
 def parse_ids(value: str) -> set[int]:
@@ -123,6 +125,11 @@ def parse_ids(value: str) -> set[int]:
 
 def load_web_settings() -> WebSettings:
     load_dotenv()
+    public_channel_member_count_raw = os.getenv("PUBLIC_CHANNEL_MEMBER_COUNT", "").strip()
+    try:
+        public_channel_member_count = int(public_channel_member_count_raw) if public_channel_member_count_raw else None
+    except ValueError:
+        public_channel_member_count = None
     return WebSettings(
         host=os.getenv("CLUB_ADMIN_HOST", "0.0.0.0").strip(),
         port=int(os.getenv("CLUB_ADMIN_PORT", "8091").strip()),
@@ -147,6 +154,8 @@ def load_web_settings() -> WebSettings:
             or os.getenv("TELEGRAM_CHANNEL_ID")
             or ""
         ).strip(),
+        public_channel_member_count=public_channel_member_count,
+        public_channel_live_count=os.getenv("PUBLIC_CHANNEL_LIVE_COUNT", "").strip().lower() in {"1", "true", "yes"},
     )
 
 
@@ -216,6 +225,8 @@ def is_in_club(row: sqlite3.Row) -> bool:
 class ClubAdminWebApp:
     def __init__(self, settings: WebSettings):
         self.settings = settings
+        self._admin_tables_ready = False
+        self._admin_tables_lock = asyncio.Lock()
         self._public_channel_count_cache: tuple[datetime, int | None] | None = None
 
     def build_app(self) -> web.Application:
@@ -276,52 +287,58 @@ class ClubAdminWebApp:
         return web.json_response({"ok": True})
 
     async def ensure_admin_tables(self) -> None:
-        async with self.connect() as db:
-            await db.execute(
-                """
-                CREATE TABLE IF NOT EXISTS broadcast_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    audience TEXT NOT NULL,
-                    message TEXT NOT NULL,
-                    recipients_count INTEGER NOT NULL DEFAULT 0,
-                    sent_count INTEGER NOT NULL DEFAULT 0,
-                    failed_count INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL
+        if self._admin_tables_ready:
+            return
+        async with self._admin_tables_lock:
+            if self._admin_tables_ready:
+                return
+            async with self.connect() as db:
+                await db.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS broadcast_logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        audience TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        recipients_count INTEGER NOT NULL DEFAULT 0,
+                        sent_count INTEGER NOT NULL DEFAULT 0,
+                        failed_count INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL
+                    )
+                    """
                 )
-                """
-            )
-            await db.execute(
-                """
-                CREATE TABLE IF NOT EXISTS action_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    telegram_id INTEGER,
-                    action_type TEXT NOT NULL,
-                    title TEXT NOT NULL,
-                    details TEXT,
-                    created_at TEXT NOT NULL
+                await db.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS action_logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        telegram_id INTEGER,
+                        action_type TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        details TEXT,
+                        created_at TEXT NOT NULL
+                    )
+                    """
                 )
-                """
-            )
-            await db.execute(
-                """
-                CREATE TABLE IF NOT EXISTS broadcast_templates (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    title TEXT NOT NULL,
-                    message TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                await db.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS broadcast_templates (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        title TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                    """
                 )
-                """
-            )
-            cursor = await db.execute("SELECT COUNT(*) AS total FROM broadcast_templates")
-            row = await cursor.fetchone()
-            if int(row["total"] or 0) == 0:
-                now = datetime.utcnow().isoformat(timespec="seconds")
-                await db.executemany(
-                    "INSERT INTO broadcast_templates (title, message, created_at, updated_at) VALUES (?, ?, ?, ?)",
-                    [(title, message, now, now) for title, message in DEFAULT_BROADCAST_TEMPLATES],
-                )
-            await db.commit()
+                cursor = await db.execute("SELECT COUNT(*) AS total FROM broadcast_templates")
+                row = await cursor.fetchone()
+                if int(row["total"] or 0) == 0:
+                    now = datetime.utcnow().isoformat(timespec="seconds")
+                    await db.executemany(
+                        "INSERT INTO broadcast_templates (title, message, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                        [(title, message, now, now) for title, message in DEFAULT_BROADCAST_TEMPLATES],
+                    )
+                await db.commit()
+            self._admin_tables_ready = True
 
     async def dashboard(self, request: web.Request) -> web.Response:
         await self.ensure_admin_tables()
@@ -1308,6 +1325,10 @@ class ClubAdminWebApp:
             return await cursor.fetchall()
 
     async def load_public_channel_count(self) -> int | None:
+        if self.settings.public_channel_member_count is not None:
+            return self.settings.public_channel_member_count
+        if not self.settings.public_channel_live_count:
+            return None
         if not self.settings.bot_token or not self.settings.public_channel_id:
             return None
         now = datetime.utcnow()
@@ -1317,13 +1338,11 @@ class ClubAdminWebApp:
                 return cached_count
         api_url = f"https://api.telegram.org/bot{self.settings.bot_token}/getChatMemberCount"
         try:
-            async with ClientSession() as session:
-                async with session.post(
-                    api_url,
-                    json={"chat_id": self.settings.public_channel_id},
-                    timeout=4,
-                ) as response:
-                    data = await response.json()
+            timeout = ClientTimeout(total=2, connect=1, sock_connect=1, sock_read=1)
+            async with ClientSession(timeout=timeout) as session:
+                request = session.post(api_url, json={"chat_id": self.settings.public_channel_id})
+                async with await asyncio.wait_for(request, timeout=2.5) as response:
+                    data = await asyncio.wait_for(response.json(), timeout=1)
             count = int(data["result"]) if data.get("ok") else None
         except Exception:
             count = None
