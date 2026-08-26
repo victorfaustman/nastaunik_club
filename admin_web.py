@@ -105,6 +105,7 @@ class WebSettings:
     bot_token: str
     club_invite_link: str
     club_chat_id: str
+    public_channel_id: str
 
 
 def parse_ids(value: str) -> set[int]:
@@ -140,6 +141,12 @@ def load_web_settings() -> WebSettings:
         bot_token=os.getenv("BOT_TOKEN", "").strip(),
         club_invite_link=os.getenv("CLUB_INVITE_LINK", "").strip(),
         club_chat_id=os.getenv("CLUB_CHAT_ID", "").strip(),
+        public_channel_id=(
+            os.getenv("PUBLIC_CHANNEL_ID")
+            or os.getenv("PUBLIC_TELEGRAM_CHANNEL_ID")
+            or os.getenv("TELEGRAM_CHANNEL_ID")
+            or ""
+        ).strip(),
     )
 
 
@@ -209,6 +216,7 @@ def is_in_club(row: sqlite3.Row) -> bool:
 class ClubAdminWebApp:
     def __init__(self, settings: WebSettings):
         self.settings = settings
+        self._public_channel_count_cache: tuple[datetime, int | None] | None = None
 
     def build_app(self) -> web.Application:
         app = web.Application(middlewares=[self.auth_middleware])
@@ -342,7 +350,8 @@ class ClubAdminWebApp:
 
         stats = await self.load_stats()
         finances = await self.load_finances(selected_month=current_month_key())
-        funnel = await self.load_funnel_stats()
+        public_channel_count = await self.load_public_channel_count()
+        funnel = await self.load_funnel_stats(public_channel_count=public_channel_count)
         finance_series = await self.load_finance_series(months=6)
         reminders = await self.load_reminder_overview()
         pending_payments = await self.load_pending_payments(limit=6)
@@ -1298,7 +1307,30 @@ class ClubAdminWebApp:
             )
             return await cursor.fetchall()
 
-    async def load_funnel_stats(self) -> list[dict[str, object]]:
+    async def load_public_channel_count(self) -> int | None:
+        if not self.settings.bot_token or not self.settings.public_channel_id:
+            return None
+        now = datetime.utcnow()
+        if self._public_channel_count_cache:
+            cached_at, cached_count = self._public_channel_count_cache
+            if (now - cached_at).total_seconds() < 300:
+                return cached_count
+        api_url = f"https://api.telegram.org/bot{self.settings.bot_token}/getChatMemberCount"
+        try:
+            async with ClientSession() as session:
+                async with session.post(
+                    api_url,
+                    json={"chat_id": self.settings.public_channel_id},
+                    timeout=4,
+                ) as response:
+                    data = await response.json()
+            count = int(data["result"]) if data.get("ok") else None
+        except Exception:
+            count = None
+        self._public_channel_count_cache = (now, count)
+        return count
+
+    async def load_funnel_stats(self, *, public_channel_count: int | None = None) -> list[dict[str, object]]:
         excluded_sql, excluded_params = self.exclusion_condition(alias="u")
         where_sql = f"WHERE {excluded_sql}" if excluded_sql else ""
         async with self.connect() as db:
@@ -1317,16 +1349,22 @@ class ClubAdminWebApp:
             )
             row = await cursor.fetchone()
         started = int(row["started"] or 0) if row else 0
+        active = int(row["active"] or 0) if row else 0
+        channel_count = public_channel_count if public_channel_count is not None else 0
+        base = channel_count or started or 1
         steps = [
-            ("Запустили бот", started),
-            ("Не оплатили", int(row["no_payment"] or 0) if row else 0),
-            ("Чек на проверке", int(row["pending"] or 0) if row else 0),
-            ("В клубе", int(row["active"] or 0) if row else 0),
-            ("Истекли", int(row["expired"] or 0) if row else 0),
+            ("В публичном канале", channel_count, public_channel_count is not None),
+            ("Запустили бот", started, True),
+            ("В клубе", active, True),
         ]
         return [
-            {"label": label, "count": count, "percent": round((count / started * 100), 1) if started else 0}
-            for label, count in steps
+            {
+                "label": label,
+                "count": count,
+                "known": known,
+                "percent": round((count / base * 100), 1) if known and base else 0,
+            }
+            for label, count, known in steps
         ]
 
     async def load_finance_series(self, *, months: int = 6) -> list[dict[str, object]]:
@@ -1650,20 +1688,27 @@ class ClubAdminWebApp:
 
     def render_funnel(self, funnel: list[dict[str, object]]) -> str:
         max_count = max((int(item.get("count", 0)) for item in funnel), default=0) or 1
-        rows = "".join(
-            f"""
-            <div class="funnel-row">
-              <div><b>{esc(item.get('label'))}</b><span>{int(item.get('count', 0))} чел. · {esc(item.get('percent', 0))}%</span></div>
-              <div class="funnel-track"><i style="width:{max(6, int(int(item.get('count', 0)) / max_count * 100))}%"></i></div>
-            </div>
-            """
-            for item in funnel
-        )
+        row_parts: list[str] = []
+        for item in funnel:
+            known = bool(item.get("known", True))
+            count = int(item.get("count", 0)) if known else 0
+            label = item.get("label")
+            meta = f"{count} чел. · {esc(item.get('percent', 0))}%" if known else "не настроен PUBLIC_CHANNEL_ID"
+            width = max(6, int(count / max_count * 100)) if known else 6
+            row_parts.append(
+                f"""
+                <div class="funnel-row {'' if known else 'muted-row'}">
+                  <div><b>{esc(label)}</b><span>{meta}</span></div>
+                  <div class="funnel-track"><i style="width:{width}%"></i></div>
+                </div>
+                """
+            )
+        rows = "".join(row_parts)
         return f"""
         <article class="crm-card wide-card">
           <p class="eyebrow">Воронка</p>
           <h2>Путь клиента</h2>
-          <p class="muted">От запуска бота до активного участия в клубе.</p>
+          <p class="muted">От публичного Telegram-канала к запуску бота и участию в клубе.</p>
           <div class="funnel-list">{rows}</div>
         </article>
         """
@@ -1808,8 +1853,8 @@ class ClubAdminWebApp:
                 <a class="text-link" href="{esc(self.url('/finance'))}#pending">Проверить</a>
               </article>
             </section>
-            <section class="split-grid">
-              <div>
+            <section class="split-grid dashboard-split">
+              <div class="split-pane">
                 <div class="section-head">
                   <div><p class="eyebrow">Риск доступа</p><h2>Скоро истекают</h2></div>
                   <a class="text-link" href="{esc(self.url('/clients', status_filter='expiring', days=7))}">Все</a>
@@ -1821,7 +1866,7 @@ class ClubAdminWebApp:
                   </table>
                 </section>
               </div>
-              <div>
+              <div class="split-pane">
                 {self.render_pending_payments(pending_payments, compact=True)}
               </div>
             </section>
@@ -2035,6 +2080,31 @@ class ClubAdminWebApp:
             )
         title = "Чеки на проверке"
         empty = "Чеков на проверке нет"
+        if compact:
+            compact_parts: list[str] = []
+            for payment in payments:
+                compact_user_url = self.url(f"/user/{int(payment['telegram_id'])}")
+                compact_parts.append(
+                    f"""
+                    <tr>
+                      <td>{esc(format_dt(payment['created_at']))}</td>
+                      <td><a class="name" href="{esc(compact_user_url)}">{esc(payment['full_name'])}</a><span class="sub">{esc(payment['amount_label'])}</span></td>
+                      <td><span class="sub">{esc(payment['receipt_text'] or payment['receipt_type'] or 'чек без текста')}</span></td>
+                    </tr>
+                    """
+                )
+            compact_rows = "".join(compact_parts)
+            return f"""
+            <section class="history-card pending-card compact-pending">
+              <div class="section-head"><div><p class="eyebrow">Оплаты</p><h2>{title}</h2></div><span class="counter">{len(payments)}</span></div>
+              <div class="table-wrap compact dashboard-table">
+                <table>
+                  <thead><tr><th>Дата</th><th>Участник</th><th>Чек</th></tr></thead>
+                  <tbody>{compact_rows or f'<tr><td colspan="3" class="empty">{empty}</td></tr>'}</tbody>
+                </table>
+              </div>
+            </section>
+            """
         return f"""
         <section class="history-card pending-card">
           <div class="section-head"><div><p class="eyebrow">Оплаты</p><h2>{title}</h2></div><span class="counter">{len(payments)}</span></div>
@@ -2710,12 +2780,19 @@ class ClubAdminWebApp:
     .audiences input {{ width: auto; min-width: 0; margin: 0 8px 0 0; }}
     .audiences span {{ color: var(--muted); margin-left: auto; }}
 
-    .crm-grid {{ display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 12px; margin: 18px 0; }}
-    .crm-card {{ background: var(--paper); border: 1px solid var(--line); padding: 18px; }}
+    .crm-grid {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }}
+    .crm-card {{ min-width: 0; background: var(--paper); border: 1px solid var(--line); padding: 18px; }}
     .crm-card.accent {{ background: #20362b; color: #fffaf1; border-color: #20362b; }}
     .crm-card.accent .muted, .crm-card.accent .eyebrow, .crm-card.accent .text-link {{ color: #dceee5; }}
     .crm-card h2 {{ margin: 0 0 8px; font-size: 32px; }}
-    .split-grid {{ display: grid; grid-template-columns: 1.25fr 0.85fr; gap: 16px; align-items: start; margin-top: 18px; }}
+    .split-grid {{ display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.85fr); gap: 16px; align-items: start; margin-top: 18px; }}
+    .split-pane {{ min-width: 0; }}
+    .dashboard-split .history-card {{ margin-top: 0; }}
+    .dashboard-split .table-wrap {{ max-width: 100%; }}
+    .dashboard-split table {{ min-width: 0; table-layout: fixed; }}
+    .dashboard-split th, .dashboard-split td {{ padding: 12px 14px; overflow-wrap: anywhere; }}
+    .dashboard-split .dashboard-table table {{ min-width: 0; }}
+    .compact-pending {{ overflow: hidden; }}
     .section-head {{ display: flex; justify-content: space-between; align-items: end; gap: 12px; margin: 18px 0 10px; }}
     .section-head h2 {{ margin: 0; }}
     .text-link {{ color: var(--green); font: 700 13px Verdana, sans-serif; }}
@@ -2726,7 +2803,7 @@ class ClubAdminWebApp:
     .mini-button {{ padding: 7px 9px; font-size: 12px; }}
     .broadcast-card.full {{ grid-template-columns: 0.65fr 1.35fr; }}
 
-    .two-one {{ grid-template-columns: 1.35fr 0.65fr; }}
+    .two-one {{ grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.65fr); }}
     .wide-card h2 {{ margin-bottom: 12px; }}
     .funnel-list {{ display: grid; gap: 10px; margin-top: 14px; }}
     .funnel-row {{ display: grid; grid-template-columns: 190px 1fr; gap: 12px; align-items: center; }}
