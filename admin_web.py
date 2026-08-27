@@ -1968,7 +1968,8 @@ class ClubAdminWebApp:
         """
 
     def render_recent_activity(self, events: list[sqlite3.Row]) -> str:
-        rows = []
+        grouped: list[dict[str, object]] = []
+        grouped_index: dict[tuple[str, str, str, str], dict[str, object]] = {}
         for event in events:
             username = event["username"]
             name = event["full_name"] or (f"@{username}" if username else "Системное событие")
@@ -1978,12 +1979,38 @@ class ClubAdminWebApp:
                 user_part = f'<a class="name" href="{esc(user_url)}">{esc(name)}</a>'
             else:
                 user_part = f'<b>{esc(name)}</b>'
+            details = str(event["details"] or event["action_type"] or "")
+            if len(details) > 150:
+                details = details[:147].rstrip() + "..."
+            group_key = (
+                str(event["action_type"] or ""),
+                str(event["title"] or ""),
+                details,
+                str(event["created_at"] or "")[:16],
+            )
+            if str(event["action_type"] or "") == "broadcast_received" and group_key in grouped_index:
+                grouped_index[group_key]["count"] = int(grouped_index[group_key]["count"]) + 1
+                continue
+            grouped_event = {
+                "user_part": user_part,
+                "created_at": event["created_at"],
+                "title": event["title"],
+                "details": details,
+                "count": 1,
+            }
+            grouped.append(grouped_event)
+            grouped_index[group_key] = grouped_event
+        rows = []
+        for event in grouped:
+            title = str(event["title"])
+            if int(event["count"]) > 1:
+                title = f"{title} · {int(event['count'])} получателя"
             rows.append(
                 f"""
                 <li>
-                  <div>{user_part}<span>{esc(format_dt(event["created_at"]))}</span></div>
-                  <p>{esc(event["title"])}</p>
-                  <small>{esc(event["details"] or event["action_type"])}</small>
+                  <div>{event["user_part"]}<span>{esc(format_dt(event["created_at"]))}</span></div>
+                  <p>{esc(title)}</p>
+                  <small>{esc(event["details"])}</small>
                 </li>
                 """
             )
@@ -2094,6 +2121,27 @@ class ClubAdminWebApp:
         if not isinstance(counts, dict):
             counts = {}
         expiring_html = "".join(self.render_user_row(row) for row in expiring_rows)
+        operations_block = ""
+        if expiring_rows or pending_payments:
+            operations_block = f"""
+            <section class="split-grid dashboard-split">
+              <div class="split-pane">
+                <div class="section-head">
+                  <div><p class="eyebrow">Риск доступа</p><h2>Кому нужен контроль</h2></div>
+                  <a class="text-link" href="{esc(self.url('/clients', status_filter='expiring', days=7))}">Все</a>
+                </div>
+                <section class="table-wrap compact">
+                  <table>
+                    <thead><tr><th>Участник</th><th>Статус</th><th>Оплата</th><th>Доступ</th><th>Особый</th><th>Бот</th></tr></thead>
+                    <tbody>{expiring_html or '<tr><td colspan="6" class="empty">В ближайшие 7 дней истечений нет</td></tr>'}</tbody>
+                  </table>
+                </section>
+              </div>
+              <div class="split-pane">
+                {self.render_pending_payments(pending_payments, compact=True)}
+              </div>
+            </section>
+            """
         return self.page(
             "CRM клуба Nastaunik",
             f"""
@@ -2115,10 +2163,9 @@ class ClubAdminWebApp:
             )}
             <section class="stats dashboard-stats">
               <div><span>Активных в клубе</span><b>{stats.get('members', 0)}</b><small>людей с доступом сейчас</small></div>
-              <div><span>Выручка за месяц</span><b>{esc(format_money(float(totals.get('month', 0.0))))}</b><small>оплат: {int(counts.get('month', 0))}</small></div>
-              <div><span>Чеки ждут проверки</span><b>{len(pending_payments)}</b><small>ручное решение</small></div>
-              <div><span>Истекают за 7 дней</span><b>{expiring_count}</b><small>зона удержания</small></div>
-              <div><span>Запускали бот</span><b>{stats.get('total', 0)}</b><small>вся база без админа</small></div>
+              <div><span>Всего в базе</span><b>{stats.get('total', 0)}</b><small>запускали бот когда-либо</small></div>
+              <div><span>Особые тарифы</span><b>{stats.get('special', 0)}</b><small>отдельная категория</small></div>
+              <div><span>Бесплатные</span><b>{stats.get('free', 0)}</b><small>вечный доступ</small></div>
             </section>
             <section class="crm-grid two-one">
               {self.render_funnel(funnel)}
@@ -2126,28 +2173,8 @@ class ClubAdminWebApp:
             </section>
             {self.render_finance_snapshot(finances, finance_series)}
             {self.render_finance_chart(finance_series)}
-            <section class="crm-grid two-one">
-              {self.render_reminder_overview(reminders)}
-              {self.render_recent_activity(recent_activity)}
-            </section>
-            <section class="split-grid dashboard-split">
-              <div class="split-pane">
-                <div class="section-head">
-                  <div><p class="eyebrow">Риск доступа</p><h2>Скоро истекают</h2></div>
-                  <a class="text-link" href="{esc(self.url('/clients', status_filter='expiring', days=7))}">Все</a>
-                </div>
-                <section class="table-wrap compact">
-                  <table>
-                    <thead><tr><th>Участник</th><th>Статус</th><th>Оплата</th><th>Доступ</th><th>Особый</th><th>Бот</th></tr></thead>
-                    <tbody>{expiring_html or '<tr><td colspan="6" class="empty">В ближайшие 7 дней истечений нет</td></tr>'}</tbody>
-                  </table>
-                </section>
-              </div>
-              <div class="split-pane">
-                {self.render_pending_payments(pending_payments, compact=True)}
-              </div>
-            </section>
-            {self.render_broadcast_history(broadcast_logs)}
+            {self.render_recent_activity(recent_activity)}
+            {operations_block}
             """,
             active="dashboard",
         )
@@ -3006,6 +3033,7 @@ class ClubAdminWebApp:
     .stats b {{ display: block; font-size: 28px; }}
     .stats span, .details span {{ color: var(--muted); font: 12px Verdana, sans-serif; }}
     .stats small {{ display: block; color: var(--muted); font: 11px Verdana, sans-serif; margin-top: 5px; }}
+    .dashboard-stats {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
     .dashboard-stats div:first-child {{ background: #20362b; border-color: #20362b; color: #fffaf1; }}
     .dashboard-stats div:first-child span, .dashboard-stats div:first-child small {{ color: #dceee5; }}
     .tabs {{ display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0; }}
