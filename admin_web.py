@@ -372,8 +372,9 @@ class ClubAdminWebApp:
         finance_series = await self.load_finance_series(months=6)
         reminders = await self.load_reminder_overview()
         pending_payments = await self.load_pending_payments(limit=6)
-        expiring_rows = await self.load_users(view="expiring", query="", expiring_days=7)
+        expiring_users = await self.load_users(view="expiring", query="", expiring_days=7)
         broadcast_logs = await self.load_broadcast_logs(limit=5)
+        recent_activity = await self.load_recent_activity(limit=8)
         body = self.render_home_dashboard(
             stats=stats,
             finances=finances,
@@ -381,8 +382,10 @@ class ClubAdminWebApp:
             finance_series=finance_series,
             reminders=reminders,
             pending_payments=pending_payments,
-            expiring_rows=expiring_rows[:6],
+            expiring_rows=expiring_users[:6],
+            expiring_count=len(expiring_users),
             broadcast_logs=broadcast_logs,
+            recent_activity=recent_activity,
         )
         return web.Response(text=body, content_type="text/html")
 
@@ -1324,6 +1327,31 @@ class ClubAdminWebApp:
             )
             return await cursor.fetchall()
 
+    async def load_recent_activity(self, limit: int = 8) -> list[sqlite3.Row]:
+        await self.ensure_admin_tables()
+        excluded_sql, excluded_params = self.exclusion_condition(alias="a")
+        where_sql = f"WHERE (a.telegram_id IS NULL OR {excluded_sql})" if excluded_sql else ""
+        async with self.connect() as db:
+            cursor = await db.execute(
+                f"""
+                SELECT
+                    a.telegram_id,
+                    a.action_type,
+                    a.title,
+                    a.details,
+                    a.created_at,
+                    u.full_name,
+                    u.username
+                FROM action_logs a
+                LEFT JOIN users u ON u.telegram_id = a.telegram_id
+                {where_sql}
+                ORDER BY a.created_at DESC, a.id DESC
+                LIMIT ?
+                """,
+                [*excluded_params, limit],
+            )
+            return await cursor.fetchall()
+
     async def load_public_channel_count(self) -> int | None:
         if self.settings.public_channel_member_count is not None:
             return self.settings.public_channel_member_count
@@ -1454,15 +1482,24 @@ class ClubAdminWebApp:
             ("Запустили бот из канала", started, True),
             ("Купили и вошли в клуб", active, True),
         ]
-        return [
-            {
-                "label": label,
-                "count": count,
-                "known": known,
-                "percent": round((count / base * 100), 1) if known and base else 0,
-            }
-            for label, count, known in steps
-        ]
+        result: list[dict[str, object]] = []
+        previous_count: int | None = None
+        for label, count, known in steps:
+            step_percent = None
+            if known and previous_count:
+                step_percent = round(count / previous_count * 100, 1)
+            result.append(
+                {
+                    "label": label,
+                    "count": count,
+                    "known": known,
+                    "percent": round((count / base * 100), 1) if known and base else 0,
+                    "step_percent": step_percent,
+                }
+            )
+            if known:
+                previous_count = count
+        return result
 
     async def load_finance_series(self, *, months: int = 6) -> list[dict[str, object]]:
         excluded_sql, excluded_params = self.exclusion_condition(alias="u")
@@ -1790,7 +1827,13 @@ class ClubAdminWebApp:
             known = bool(item.get("known", True))
             count = int(item.get("count", 0)) if known else 0
             label = item.get("label")
-            meta = f"{count} чел. · {esc(item.get('percent', 0))}%" if known else "не настроен PUBLIC_CHANNEL_ID"
+            step_percent = item.get("step_percent")
+            if known:
+                meta = f"{count} чел. · {esc(item.get('percent', 0))}% от канала"
+                if step_percent is not None:
+                    meta += f" · {esc(step_percent)}% от прошлого шага"
+            else:
+                meta = "не настроен PUBLIC_CHANNEL_ID"
             width = max(6, int(count / max_count * 100)) if known else 6
             row_parts.append(
                 f"""
@@ -1808,6 +1851,147 @@ class ClubAdminWebApp:
           <p class="muted">От публичного Telegram-канала к запуску бота и участию в клубе.</p>
           <div class="funnel-list">{rows}</div>
         </article>
+        """
+
+    def render_action_center(
+        self,
+        *,
+        pending_count: int,
+        expiring_count: int,
+        reminders: dict[str, int],
+    ) -> str:
+        items = [
+            {
+                "label": "Проверить чеки",
+                "value": pending_count,
+                "hint": "ожидают подтверждения оплаты",
+                "href": self.url("/finance") + "#pending",
+                "tone": "hot" if pending_count else "calm",
+            },
+            {
+                "label": "Истекают сегодня",
+                "value": reminders.get("due_today", 0),
+                "hint": "нужны уведомления об окончании",
+                "href": self.url("/clients", status_filter="expiring", days=1),
+                "tone": "warn" if reminders.get("due_today", 0) else "calm",
+            },
+            {
+                "label": "Пора удалить",
+                "value": reminders.get("overdue_remove", 0),
+                "hint": "просрочен льготный период",
+                "href": self.url("/clients", status_filter="expired"),
+                "tone": "hot" if reminders.get("overdue_remove", 0) else "calm",
+            },
+            {
+                "label": "Скоро истекают",
+                "value": expiring_count,
+                "hint": "доступ заканчивается за 7 дней",
+                "href": self.url("/clients", status_filter="expiring", days=7),
+                "tone": "warn" if expiring_count else "calm",
+            },
+        ]
+        rows = "".join(
+            f"""
+            <a class="action-item {esc(item['tone'])}" href="{esc(item['href'])}">
+              <span>{esc(item['label'])}</span>
+              <b>{int(item['value'])}</b>
+              <small>{esc(item['hint'])}</small>
+            </a>
+            """
+            for item in items
+        )
+        return f"""
+        <section class="priority-card">
+          <div class="section-head tight"><div><p class="eyebrow">Сегодня</p><h2>Требует внимания</h2></div></div>
+          <div class="action-grid">{rows}</div>
+        </section>
+        """
+
+    def render_finance_snapshot(self, finances: dict[str, object], series: list[dict[str, object]]) -> str:
+        totals = finances.get("totals", {})
+        counts = finances.get("counts", {})
+        if not isinstance(totals, dict):
+            totals = {}
+        if not isinstance(counts, dict):
+            counts = {}
+        month_total = float(totals.get("month", 0.0))
+        week_total = float(totals.get("week", 0.0))
+        today_total = float(totals.get("today", 0.0))
+        month_count = int(counts.get("month", 0))
+        average = month_total / month_count if month_count else 0.0
+        previous = float(series[-2].get("total", 0.0)) if len(series) > 1 else 0.0
+        diff = month_total - previous
+        diff_text = f"+{format_money(diff)} к прошлому месяцу" if diff >= 0 else f"-{format_money(abs(diff))} к прошлому месяцу"
+        cards = [
+            ("Месяц", format_money(month_total), f"оплат: {month_count}"),
+            ("Неделя", format_money(week_total), "последние 7 дней"),
+            ("Сегодня", format_money(today_total), "подтверждено сегодня"),
+            ("Средний платёж", format_money(average), diff_text),
+        ]
+        rows = "".join(
+            f"<div><span>{esc(label)}</span><b>{esc(value)}</b><small>{esc(hint)}</small></div>"
+            for label, value, hint in cards
+        )
+        return f"""
+        <section class="finance-snapshot">
+          <div class="section-head tight">
+            <div><p class="eyebrow">Деньги</p><h2>Финансовый срез</h2></div>
+            <a class="text-link" href="{esc(self.url('/finance'))}">Подробнее</a>
+          </div>
+          <div class="finance-grid">{rows}</div>
+        </section>
+        """
+
+    def render_system_health(self, *, funnel: list[dict[str, object]], reminders: dict[str, int]) -> str:
+        channel_known = bool(funnel and funnel[0].get("known"))
+        checks = [
+            ("CRM", "работает", "ok"),
+            ("Бот", "токен настроен" if self.settings.bot_token else "нет токена", "ok" if self.settings.bot_token else "bad"),
+            ("Канал", "читается" if channel_known else "не подключен live-счётчик", "ok" if channel_known else "warn"),
+            ("Автоматика", "есть задачи" if sum(reminders.values()) else "очередь пустая", "warn" if sum(reminders.values()) else "ok"),
+        ]
+        rows = "".join(
+            f"""
+            <li class="{esc(tone)}">
+              <span>{esc(label)}</span>
+              <b>{esc(status)}</b>
+            </li>
+            """
+            for label, status, tone in checks
+        )
+        return f"""
+        <article class="crm-card health-card">
+          <p class="eyebrow">Система</p>
+          <h2>Здоровье CRM</h2>
+          <ul class="health-list">{rows}</ul>
+        </article>
+        """
+
+    def render_recent_activity(self, events: list[sqlite3.Row]) -> str:
+        rows = []
+        for event in events:
+            username = event["username"]
+            name = event["full_name"] or (f"@{username}" if username else "Системное событие")
+            user_part = ""
+            if event["telegram_id"]:
+                user_url = self.url(f"/user/{int(event['telegram_id'])}")
+                user_part = f'<a class="name" href="{esc(user_url)}">{esc(name)}</a>'
+            else:
+                user_part = f'<b>{esc(name)}</b>'
+            rows.append(
+                f"""
+                <li>
+                  <div>{user_part}<span>{esc(format_dt(event["created_at"]))}</span></div>
+                  <p>{esc(event["title"])}</p>
+                  <small>{esc(event["details"] or event["action_type"])}</small>
+                </li>
+                """
+            )
+        return f"""
+        <section class="history-card activity-card">
+          <div class="section-head tight"><div><p class="eyebrow">Журнал</p><h2>Последние действия</h2></div></div>
+          <ul class="activity-list">{''.join(rows) or '<li class="empty">Действий пока нет</li>'}</ul>
+        </section>
         """
 
     def render_reminder_overview(self, reminders: dict[str, int]) -> str:
@@ -1899,7 +2083,9 @@ class ClubAdminWebApp:
         reminders: dict[str, int],
         pending_payments: list[sqlite3.Row],
         expiring_rows: list[sqlite3.Row],
+        expiring_count: int,
         broadcast_logs: list[sqlite3.Row],
+        recent_activity: list[sqlite3.Row],
     ) -> str:
         totals = finances.get("totals", {})
         counts = finances.get("counts", {})
@@ -1917,38 +2103,32 @@ class ClubAdminWebApp:
                 <h1>Главная</h1>
                 <p class="muted">Пульс клуба: люди, деньги, чеки и ближайшие риски по доступу.</p>
               </div>
-              <a class="button" href="{esc(self.url('/clients'))}">Открыть клиентов</a>
+              <div class="hero-actions">
+                <a class="button" href="{esc(self.url('/clients'))}">Открыть клиентов</a>
+                <a class="button secondary" href="{esc(self.url('/broadcasts'))}">Написать участникам</a>
+              </div>
             </section>
+            {self.render_action_center(
+                pending_count=len(pending_payments),
+                expiring_count=expiring_count,
+                reminders=reminders,
+            )}
             <section class="stats dashboard-stats">
-              <div><b>{stats.get('members', 0)}</b><span>сейчас в клубе</span></div>
-              <div><b>{stats.get('total', 0)}</b><span>запускали бот</span></div>
-              <div><b>{stats.get('waiting', 0)}</b><span>чеков на проверке</span></div>
-              <div><b>{stats.get('expired', 0)}</b><span>истекли</span></div>
-              <div><b>{stats.get('special', 0) + stats.get('free', 0)}</b><span>особых и бесплатных</span></div>
+              <div><span>Активных в клубе</span><b>{stats.get('members', 0)}</b><small>людей с доступом сейчас</small></div>
+              <div><span>Выручка за месяц</span><b>{esc(format_money(float(totals.get('month', 0.0))))}</b><small>оплат: {int(counts.get('month', 0))}</small></div>
+              <div><span>Чеки ждут проверки</span><b>{len(pending_payments)}</b><small>ручное решение</small></div>
+              <div><span>Истекают за 7 дней</span><b>{expiring_count}</b><small>зона удержания</small></div>
+              <div><span>Запускали бот</span><b>{stats.get('total', 0)}</b><small>вся база без админа</small></div>
             </section>
             <section class="crm-grid two-one">
               {self.render_funnel(funnel)}
-              {self.render_reminder_overview(reminders)}
+              {self.render_system_health(funnel=funnel, reminders=reminders)}
             </section>
+            {self.render_finance_snapshot(finances, finance_series)}
             {self.render_finance_chart(finance_series)}
-            <section class="crm-grid">
-              <article class="crm-card accent">
-                <p class="eyebrow">Финансы</p>
-                <h2>{esc(format_money(float(totals.get('month', 0.0))))}</h2>
-                <p class="muted">за текущий месяц · оплат: {int(counts.get('month', 0))}</p>
-                <a class="text-link" href="{esc(self.url('/finance'))}">Перейти в финансы</a>
-              </article>
-              <article class="crm-card">
-                <p class="eyebrow">Сегодня</p>
-                <h2>{esc(format_money(float(totals.get('today', 0.0))))}</h2>
-                <p class="muted">подтвержденные поступления сегодня</p>
-              </article>
-              <article class="crm-card">
-                <p class="eyebrow">Чеки</p>
-                <h2>{len(pending_payments)}</h2>
-                <p class="muted">последние чеки ждут решения</p>
-                <a class="text-link" href="{esc(self.url('/finance'))}#pending">Проверить</a>
-              </article>
+            <section class="crm-grid two-one">
+              {self.render_reminder_overview(reminders)}
+              {self.render_recent_activity(recent_activity)}
             </section>
             <section class="split-grid dashboard-split">
               <div class="split-pane">
@@ -2820,10 +3000,14 @@ class ClubAdminWebApp:
     button, .button {{ padding: 11px 14px; border: 0; background: var(--green); color: white; text-decoration: none; font: 700 14px Verdana, sans-serif; cursor: pointer; }}
     .button.secondary {{ background: #7b6c58; display: inline-block; }}
     button.danger {{ background: #9a3d2f; }}
+    .hero-actions {{ display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }}
     .stats {{ display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 18px 0; }}
     .stats div, .details div {{ background: var(--paper); border: 1px solid var(--line); padding: 14px; }}
     .stats b {{ display: block; font-size: 28px; }}
     .stats span, .details span {{ color: var(--muted); font: 12px Verdana, sans-serif; }}
+    .stats small {{ display: block; color: var(--muted); font: 11px Verdana, sans-serif; margin-top: 5px; }}
+    .dashboard-stats div:first-child {{ background: #20362b; border-color: #20362b; color: #fffaf1; }}
+    .dashboard-stats div:first-child span, .dashboard-stats div:first-child small {{ color: #dceee5; }}
     .tabs {{ display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0; }}
     .tab {{ padding: 9px 11px; border: 1px solid var(--line); color: var(--ink); text-decoration: none; background: var(--paper); font: 13px Verdana, sans-serif; }}
     .tab.active {{ background: var(--green); color: white; border-color: var(--green); }}
@@ -2877,6 +3061,17 @@ class ClubAdminWebApp:
     .audiences input {{ width: auto; min-width: 0; margin: 0 8px 0 0; }}
     .audiences span {{ color: var(--muted); margin-left: auto; }}
 
+    .priority-card {{ background: #20362b; color: #fffaf1; border: 1px solid #20362b; padding: 18px; margin: 18px 0; }}
+    .priority-card .eyebrow, .priority-card h2 {{ color: #fffaf1; }}
+    .section-head.tight {{ margin: 0 0 12px; }}
+    .action-grid {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }}
+    .action-item {{ display: grid; gap: 5px; min-width: 0; padding: 14px; color: inherit; text-decoration: none; background: rgba(255, 250, 241, 0.08); border: 1px solid rgba(255, 250, 241, 0.22); }}
+    .action-item span {{ font: 700 12px Verdana, sans-serif; color: #dceee5; }}
+    .action-item b {{ font-size: 34px; line-height: 1; }}
+    .action-item small {{ color: #dceee5; font: 11px Verdana, sans-serif; }}
+    .action-item.hot {{ background: #f4e1be; color: #20231f; border-color: #d09b5a; }}
+    .action-item.hot span, .action-item.hot small {{ color: #7b4f18; }}
+    .action-item.warn {{ background: rgba(244, 225, 190, 0.18); border-color: rgba(244, 225, 190, 0.45); }}
     .crm-grid {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }}
     .crm-card {{ min-width: 0; background: var(--paper); border: 1px solid var(--line); padding: 18px; }}
     .crm-card.accent {{ background: #20362b; color: #fffaf1; border-color: #20362b; }}
@@ -2911,6 +3106,24 @@ class ClubAdminWebApp:
     .metric-list {{ display: grid; gap: 10px; padding: 0; margin: 14px 0 0; list-style: none; }}
     .metric-list li {{ display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }}
     .metric-list span {{ color: var(--muted); }}
+    .health-list {{ display: grid; gap: 9px; list-style: none; padding: 0; margin: 14px 0 0; }}
+    .health-list li {{ display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }}
+    .health-list li:before {{ content: ""; width: 9px; height: 9px; flex: 0 0 9px; background: var(--green); border-radius: 999px; }}
+    .health-list li.warn:before {{ background: var(--amber); }}
+    .health-list li.bad:before {{ background: #9a3d2f; }}
+    .health-list span {{ color: var(--muted); margin-right: auto; }}
+    .health-list b {{ font: 700 12px Verdana, sans-serif; text-align: right; }}
+    .finance-snapshot {{ background: var(--paper); border: 1px solid var(--line); padding: 16px; margin: 18px 0; }}
+    .finance-grid {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }}
+    .finance-grid div {{ background: #f8f0df; border: 1px solid var(--line); padding: 14px; min-width: 0; }}
+    .finance-grid span, .finance-grid small {{ display: block; color: var(--muted); font: 11px Verdana, sans-serif; }}
+    .finance-grid b {{ display: block; font-size: 25px; margin: 5px 0; }}
+    .activity-card {{ min-width: 0; margin-top: 0; }}
+    .activity-list {{ display: grid; gap: 10px; list-style: none; margin: 0; padding: 0; }}
+    .activity-list li {{ background: #f8f0df; border: 1px solid var(--line); padding: 12px; }}
+    .activity-list div {{ display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }}
+    .activity-list p {{ margin: 6px 0 4px; font-weight: 700; }}
+    .activity-list span, .activity-list small {{ color: var(--muted); font: 11px Verdana, sans-serif; overflow-wrap: anywhere; }}
     .chart-card {{ background: var(--paper); border: 1px solid var(--line); padding: 16px; margin: 18px 0; }}
     .bar-chart {{ display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; align-items: end; min-height: 180px; }}
     .chart-bar {{ display: grid; gap: 7px; text-align: center; align-items: end; }}
@@ -2939,10 +3152,13 @@ class ClubAdminWebApp:
       .side-nav {{ grid-template-columns: repeat(2, 1fr); }}
       main {{ width: min(100% - 20px, 1180px); padding-top: 14px; }}
       .hero, .profile {{ align-items: stretch; flex-direction: column; }}
+      .hero-actions {{ justify-content: stretch; }}
+      .hero-actions .button {{ width: 100%; }}
       h1 {{ font-size: 30px; }}
       .search {{ flex-direction: column; }}
       input {{ min-width: 0; width: 100%; }}
       .stats, .details, .crm-grid, .split-grid, .two-one, .templates-grid {{ grid-template-columns: 1fr; }}
+      .action-grid, .finance-grid {{ grid-template-columns: 1fr; }}
       .broadcast-card {{ grid-template-columns: 1fr; }}
       .filter-grid {{ grid-template-columns: 1fr; }}
       .finance-head, .month-form {{ align-items: stretch; flex-direction: column; }}
