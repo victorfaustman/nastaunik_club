@@ -228,6 +228,7 @@ class ClubAdminWebApp:
         self._admin_tables_ready = False
         self._admin_tables_lock = asyncio.Lock()
         self._public_channel_count_cache: tuple[datetime, int | None] | None = None
+        self._public_channel_funnel_cache: tuple[datetime, dict[str, int] | None] | None = None
 
     def build_app(self) -> web.Application:
         app = web.Application(middlewares=[self.auth_middleware])
@@ -367,8 +368,7 @@ class ClubAdminWebApp:
 
         stats = await self.load_stats()
         finances = await self.load_finances(selected_month=current_month_key())
-        public_channel_count = await self.load_public_channel_count()
-        funnel = await self.load_funnel_stats(public_channel_count=public_channel_count)
+        funnel = await self.load_funnel_stats()
         finance_series = await self.load_finance_series(months=6)
         reminders = await self.load_reminder_overview()
         pending_payments = await self.load_pending_payments(limit=6)
@@ -1349,7 +1349,80 @@ class ClubAdminWebApp:
         self._public_channel_count_cache = (now, count)
         return count
 
-    async def load_funnel_stats(self, *, public_channel_count: int | None = None) -> list[dict[str, object]]:
+    async def load_public_channel_funnel_counts(self) -> dict[str, int] | None:
+        if not self.settings.public_channel_live_count:
+            return None
+        if not self.settings.bot_token or not self.settings.public_channel_id:
+            return None
+        now = datetime.utcnow()
+        if self._public_channel_funnel_cache:
+            cached_at, cached_counts = self._public_channel_funnel_cache
+            if (now - cached_at).total_seconds() < 900:
+                return cached_counts
+
+        excluded_sql, excluded_params = self.exclusion_condition(alias="u")
+        where_sql = f"WHERE {excluded_sql}" if excluded_sql else ""
+        async with self.connect() as db:
+            cursor = await db.execute(
+                f"""
+                SELECT u.telegram_id,
+                       CASE
+                         WHEN u.current_status IN ('active', 'grace_period') OR u.is_lifetime_free = 1 THEN 1
+                         ELSE 0
+                       END AS in_club
+                FROM users u
+                {where_sql}
+                """,
+                excluded_params,
+            )
+            rows = await cursor.fetchall()
+
+        timeout = ClientTimeout(total=2, connect=1, sock_connect=1, sock_read=1)
+        api_url = f"https://api.telegram.org/bot{self.settings.bot_token}/getChatMember"
+        semaphore = asyncio.Semaphore(8)
+
+        async def is_channel_member(row: sqlite3.Row) -> tuple[bool, bool]:
+            async with semaphore:
+                try:
+                    async with ClientSession(timeout=timeout) as session:
+                        response = await asyncio.wait_for(
+                            session.post(
+                                api_url,
+                                json={
+                                    "chat_id": self.settings.public_channel_id,
+                                    "user_id": int(row["telegram_id"]),
+                                },
+                            ),
+                            timeout=2.5,
+                        )
+                        try:
+                            data = await asyncio.wait_for(response.json(), timeout=1)
+                        finally:
+                            response.release()
+                    status = str((data.get("result") or {}).get("status") or "")
+                    return status not in {"left", "kicked"}, bool(row["in_club"])
+                except Exception:
+                    return False, bool(row["in_club"])
+
+        try:
+            checks = await asyncio.wait_for(
+                asyncio.gather(*(is_channel_member(row) for row in rows)),
+                timeout=6,
+            )
+        except Exception:
+            self._public_channel_funnel_cache = (now, None)
+            return None
+
+        started_from_channel = sum(1 for is_member, _ in checks if is_member)
+        bought_from_channel = sum(1 for is_member, in_club in checks if is_member and in_club)
+        counts = {
+            "started_from_channel": started_from_channel,
+            "bought_from_channel": bought_from_channel,
+        }
+        self._public_channel_funnel_cache = (now, counts)
+        return counts
+
+    async def load_funnel_stats(self) -> list[dict[str, object]]:
         excluded_sql, excluded_params = self.exclusion_condition(alias="u")
         where_sql = f"WHERE {excluded_sql}" if excluded_sql else ""
         async with self.connect() as db:
@@ -1369,12 +1442,17 @@ class ClubAdminWebApp:
             row = await cursor.fetchone()
         started = int(row["started"] or 0) if row else 0
         active = int(row["active"] or 0) if row else 0
+        public_channel_count = await self.load_public_channel_count()
+        channel_funnel = await self.load_public_channel_funnel_counts()
+        if channel_funnel is not None:
+            started = channel_funnel["started_from_channel"]
+            active = channel_funnel["bought_from_channel"]
         channel_count = public_channel_count if public_channel_count is not None else 0
         base = channel_count or started or 1
         steps = [
             ("В публичном канале", channel_count, public_channel_count is not None),
-            ("Запустили бот", started, True),
-            ("В клубе", active, True),
+            ("Запустили бот из канала", started, True),
+            ("Купили и вошли в клуб", active, True),
         ]
         return [
             {
