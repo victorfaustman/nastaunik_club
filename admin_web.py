@@ -1803,7 +1803,18 @@ class ClubAdminWebApp:
                 u.*,
                 u.payment_confirmed_at AS last_paid_at,
                 COALESCE(u.recurring_amount_label, ?) AS last_amount_label,
-                0 AS payments_count,
+                (
+                    SELECT COUNT(*)
+                    FROM payments p
+                    WHERE p.telegram_id = u.telegram_id
+                      AND p.status = 'approved'
+                ) AS payments_count,
+                (
+                    SELECT GROUP_CONCAT(p.amount_label, '||')
+                    FROM payments p
+                    WHERE p.telegram_id = u.telegram_id
+                      AND p.status = 'approved'
+                ) AS payment_amount_labels,
                 NULL AS pending_payment_id,
                 NULL AS pending_receipt_text
             FROM users u
@@ -2132,8 +2143,8 @@ class ClubAdminWebApp:
                 </div>
                 <section class="table-wrap compact">
                   <table>
-                    <thead><tr><th>Участник</th><th>Статус</th><th>Оплата</th><th>Доступ</th><th>Особый</th><th>Бот</th></tr></thead>
-                    <tbody>{expiring_html or '<tr><td colspan="6" class="empty">В ближайшие 7 дней истечений нет</td></tr>'}</tbody>
+                    <thead><tr><th>Участник</th><th>Статус</th><th>Оплата</th><th>LTC</th><th>Доступ</th><th>Особый</th><th>Бот</th></tr></thead>
+                    <tbody>{expiring_html or '<tr><td colspan="7" class="empty">В ближайшие 7 дней истечений нет</td></tr>'}</tbody>
                   </table>
                 </section>
               </div>
@@ -2231,6 +2242,7 @@ class ClubAdminWebApp:
                         <option value="no_payment">Без оплаты</option>
                       </select>
                     </th>
+                    <th></th>
                     <th>
                       <select class="column-filter" data-filter-key="access">
                         <option value="">Все</option>
@@ -2289,10 +2301,10 @@ class ClubAdminWebApp:
             <section class="table-wrap">
               <table class="client-filter-table">
                 <thead>
-                  <tr><th>Участник</th><th>Статус</th><th>Оплата</th><th>Доступ</th><th>Особый</th><th>Бот</th></tr>
+                  <tr><th>Участник</th><th>Статус</th><th>Оплата</th><th>LTC</th><th>Доступ</th><th>Особый</th><th>Бот</th></tr>
                   {table_filter_row}
                 </thead>
-                <tbody>{rows_html or '<tr><td colspan="6" class="empty">Нет клиентов под эти фильтры</td></tr>'}<tr class="client-filter-empty hidden"><td colspan="6" class="empty">Нет клиентов под эти фильтры в таблице</td></tr></tbody>
+                <tbody>{rows_html or '<tr><td colspan="7" class="empty">Нет клиентов под эти фильтры</td></tr>'}<tr class="client-filter-empty hidden"><td colspan="7" class="empty">Нет клиентов под эти фильтры в таблице</td></tr></tbody>
               </table>
             </section>
             """,
@@ -2537,12 +2549,13 @@ class ClubAdminWebApp:
                     <th>Участник</th>
                     <th>Статус</th>
                     <th>Оплата</th>
+                    <th>LTC</th>
                     <th>Доступ</th>
                     <th>Особый</th>
                     <th>Бот</th>
                   </tr>
                 </thead>
-                <tbody>{rows_html or '<tr><td colspan="6" class="empty">Нет записей</td></tr>'}</tbody>
+                <tbody>{rows_html or '<tr><td colspan="7" class="empty">Нет записей</td></tr>'}</tbody>
               </table>
             </section>
             """
@@ -2823,6 +2836,11 @@ class ClubAdminWebApp:
         special_filter = "free" if int(row["is_lifetime_free"] or 0) else "special" if special else "regular"
         bot_filter = "activated" if row["created_at"] else ""
         name_filter = f"{row['full_name']} @{username or ''} {int(row['telegram_id'])}".strip().lower()
+        try:
+            amount_labels = str(row["payment_amount_labels"] or "")
+        except (IndexError, KeyError):
+            amount_labels = ""
+        ltc_total = sum(parse_amount(label) for label in amount_labels.split("||") if label)
         if pending_payment_id:
             approve_url = self.url(f"/payment/{pending_payment_id}/approve")
             reject_url = self.url(f"/payment/{pending_payment_id}/reject")
@@ -2859,8 +2877,12 @@ class ClubAdminWebApp:
             {pending_actions}
           </td>
           <td>
+            <strong>{esc(format_money(ltc_total))}</strong>
+            <span class="sub">{int(row["payments_count"] or 0)} оплат</span>
+          </td>
+          <td>
             <strong>до {esc(format_date(row["access_end_at"]))}</strong>
-            <span class="sub">оплат: {int(row["payments_count"] or 0)}</span>
+            <span class="sub">актуальный срок</span>
           </td>
           <td>{f'<span class="pill special">{esc(special)}</span>' if special else '<span class="sub">—</span>'}</td>
           <td><span class="sub">с {esc(format_date(row["created_at"]))}</span></td>
@@ -2906,6 +2928,8 @@ class ClubAdminWebApp:
             """
             for payment in payments
         )
+        approved_payments = [payment for payment in payments if payment["status"] == "approved"]
+        ltc_total = sum(parse_amount(payment["amount_label"]) for payment in approved_payments)
         events: list[tuple[str, str, str, str]] = []
         for payment in payments:
             if payment["created_at"]:
@@ -2988,7 +3012,9 @@ class ClubAdminWebApp:
               <div><span>Особый</span><b>{esc(special_label(user) or "нет")}</b></div>
               <div><span>Вечно бесплатный</span><b>{'да' if int(user["is_lifetime_free"] or 0) else 'нет'}</b></div>
               <div><span>Тариф</span><b>{esc(user["recurring_amount_label"] or DEFAULT_AMOUNT_LABEL)}</b></div>
+              <div><span>LTC</span><b>{esc(format_money(ltc_total))}</b></div>
               <div><span>Оплат всего</span><b>{len(payments)}</b></div>
+              <div><span>Подтвержденных оплат</span><b>{len(approved_payments)}</b></div>
               <div><span>Комментарий</span><b>{esc(user["admin_comment"] or "—")}</b></div>
             </section>
             <section class="restore-card">
