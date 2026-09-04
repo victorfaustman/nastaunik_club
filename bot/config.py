@@ -47,6 +47,7 @@ def load_settings() -> Settings:
     admin_ids_raw = os.getenv("ADMIN_IDS", "").strip()
     if not admin_ids_raw:
         raise ValueError("ADMIN_IDS is required")
+    admin_ids = _parse_admin_ids(admin_ids_raw)
 
     club_invite_link = os.getenv("CLUB_INVITE_LINK", "").strip()
     if not club_invite_link:
@@ -71,7 +72,7 @@ def load_settings() -> Settings:
 
     return Settings(
         bot_token=bot_token,
-        admin_ids=_parse_admin_ids(admin_ids_raw),
+        admin_ids=admin_ids,
         club_invite_link=club_invite_link,
         trial_club_invite_link=trial_club_invite_link,
         owner_contact_url=owner_contact_url,
