@@ -2211,6 +2211,51 @@ class ClubAdminWebApp:
             for days in (1, 3, 5, 7, 14, 30)
         )
         rows_html = "".join(self.render_user_row(row) for row in rows)
+        table_filter_row = """
+                  <tr class="column-filter-row">
+                    <th><input class="column-filter" data-filter-key="name" placeholder="Фильтр по участнику"></th>
+                    <th>
+                      <select class="column-filter" data-filter-key="status">
+                        <option value="">Все</option>
+                        <option value="active">В клубе</option>
+                        <option value="waiting_confirmation">Чек на проверке</option>
+                        <option value="expired">Истекшие</option>
+                        <option value="not_in_club">Не в клубе</option>
+                      </select>
+                    </th>
+                    <th>
+                      <select class="column-filter" data-filter-key="payment">
+                        <option value="">Все</option>
+                        <option value="paid">Оплатили</option>
+                        <option value="pending">Чек на проверке</option>
+                        <option value="no_payment">Без оплаты</option>
+                      </select>
+                    </th>
+                    <th>
+                      <select class="column-filter" data-filter-key="access">
+                        <option value="">Все</option>
+                        <option value="active">Есть доступ</option>
+                        <option value="expiring">Скоро истекает</option>
+                        <option value="expired">Истек</option>
+                        <option value="none">Нет даты</option>
+                      </select>
+                    </th>
+                    <th>
+                      <select class="column-filter" data-filter-key="special">
+                        <option value="">Все</option>
+                        <option value="regular">Обычные</option>
+                        <option value="special">Особые</option>
+                        <option value="free">Бесплатные</option>
+                      </select>
+                    </th>
+                    <th>
+                      <select class="column-filter" data-filter-key="bot">
+                        <option value="">Все</option>
+                        <option value="activated">Активировали</option>
+                      </select>
+                    </th>
+                  </tr>
+        """
         return self.page(
             "Клиенты клуба",
             f"""
@@ -2242,11 +2287,12 @@ class ClubAdminWebApp:
               </form>
             </section>
             <section class="table-wrap">
-              <table>
+              <table class="client-filter-table">
                 <thead>
                   <tr><th>Участник</th><th>Статус</th><th>Оплата</th><th>Доступ</th><th>Особый</th><th>Бот</th></tr>
+                  {table_filter_row}
                 </thead>
-                <tbody>{rows_html or '<tr><td colspan="6" class="empty">Нет клиентов под эти фильтры</td></tr>'}</tbody>
+                <tbody>{rows_html or '<tr><td colspan="6" class="empty">Нет клиентов под эти фильтры</td></tr>'}<tr class="client-filter-empty hidden"><td colspan="6" class="empty">Нет клиентов под эти фильтры в таблице</td></tr></tbody>
               </table>
             </section>
             """,
@@ -2754,6 +2800,29 @@ class ClubAdminWebApp:
             pending_payment_id = int(row["pending_payment_id"]) if row["pending_payment_id"] else 0
         except (IndexError, TypeError, ValueError):
             pending_payment_id = 0
+        paid_at = row["last_paid_at"] or row["payment_confirmed_at"]
+        payment_filter = "pending" if pending_payment_id else "paid" if paid_at else "no_payment"
+        access_filter = "none"
+        if row["access_end_at"]:
+            try:
+                access_end = datetime.fromisoformat(str(row["access_end_at"]))
+                today = datetime.utcnow().date()
+                if access_end.date() < today or row["current_status"] == "expired":
+                    access_filter = "expired"
+                elif access_end.date() <= today + timedelta(days=7):
+                    access_filter = "expiring"
+                else:
+                    access_filter = "active"
+            except ValueError:
+                access_filter = "none"
+        elif is_in_club(row):
+            access_filter = "active"
+        status_filter = "active" if is_in_club(row) else row["current_status"] or "not_in_club"
+        if status_filter not in {"active", "waiting_confirmation", "expired"}:
+            status_filter = "not_in_club"
+        special_filter = "free" if int(row["is_lifetime_free"] or 0) else "special" if special else "regular"
+        bot_filter = "activated" if row["created_at"] else ""
+        name_filter = f"{row['full_name']} @{username or ''} {int(row['telegram_id'])}".strip().lower()
         if pending_payment_id:
             approve_url = self.url(f"/payment/{pending_payment_id}/approve")
             reject_url = self.url(f"/payment/{pending_payment_id}/reject")
@@ -2771,7 +2840,14 @@ class ClubAdminWebApp:
             </div>
             """
         return f"""
-        <tr>
+        <tr
+          data-filter-name="{esc(name_filter)}"
+          data-filter-status="{esc(status_filter)}"
+          data-filter-payment="{esc(payment_filter)}"
+          data-filter-access="{esc(access_filter)}"
+          data-filter-special="{esc(special_filter)}"
+          data-filter-bot="{esc(bot_filter)}"
+        >
           <td>
             <a class="name" href="{esc(detail_url)}">{special_star}{esc(row["full_name"])}</a>
             <span class="sub">{esc("@" + username if username else "без username")} · ID {int(row["telegram_id"])}</span>
@@ -3043,6 +3119,10 @@ class ClubAdminWebApp:
     table {{ width: 100%; border-collapse: collapse; min-width: 900px; }}
     th, td {{ text-align: left; padding: 13px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }}
     th {{ color: var(--muted); font: 700 12px Verdana, sans-serif; background: #f8f0df; }}
+    .column-filter-row th {{ padding: 8px 10px; background: #fffaf1; }}
+    .column-filter {{ width: 100%; min-width: 0; padding: 8px 9px; border: 1px solid var(--line); background: #f8f0df; color: var(--ink); font: 12px Verdana, sans-serif; }}
+    .column-filter:focus {{ outline: 2px solid #9cc9b1; outline-offset: -2px; background: white; }}
+    .client-filter-empty.hidden {{ display: none; }}
     .name {{ color: var(--ink); font-weight: 700; text-decoration: none; }}
     .star {{ color: var(--amber); font: 700 14px Verdana, sans-serif; }}
     .pill {{ display: inline-block; padding: 4px 8px; border-radius: 6px; font: 700 12px Verdana, sans-serif; }}
@@ -3216,6 +3296,36 @@ class ClubAdminWebApp:
           target.value = button.getAttribute('data-template') || '';
           target.focus();
         }}
+      }});
+    }});
+    document.querySelectorAll('.client-filter-table').forEach((table) => {{
+      const filters = Array.from(table.querySelectorAll('.column-filter'));
+      const rows = Array.from(table.querySelectorAll('tbody tr[data-filter-name]'));
+      const emptyRow = table.querySelector('.client-filter-empty');
+      const applyFilters = () => {{
+        let visibleCount = 0;
+        rows.forEach((row) => {{
+          const visible = filters.every((filter) => {{
+            const key = filter.getAttribute('data-filter-key');
+            const value = (filter.value || '').trim().toLowerCase();
+            if (!value) {{
+              return true;
+            }}
+            const rowValue = (row.getAttribute(`data-filter-${{key}}`) || '').toLowerCase();
+            return key === 'name' ? rowValue.includes(value) : rowValue === value;
+          }});
+          row.style.display = visible ? '' : 'none';
+          if (visible) {{
+            visibleCount += 1;
+          }}
+        }});
+        if (emptyRow) {{
+          emptyRow.classList.toggle('hidden', visibleCount !== 0);
+        }}
+      }};
+      filters.forEach((filter) => {{
+        filter.addEventListener('input', applyFilters);
+        filter.addEventListener('change', applyFilters);
       }});
     }});
   </script>
