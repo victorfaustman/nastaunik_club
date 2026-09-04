@@ -9,7 +9,7 @@ import os
 import re
 import sqlite3
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
@@ -112,6 +112,7 @@ class WebSettings:
     public_channel_id: str
     public_channel_member_count: int | None
     public_channel_live_count: bool
+    mini_app_allowed_ids: set[int] = field(default_factory=set)
 
 
 def parse_ids(value: str) -> set[int]:
@@ -160,6 +161,7 @@ def load_web_settings() -> WebSettings:
         ).strip(),
         public_channel_member_count=public_channel_member_count,
         public_channel_live_count=os.getenv("PUBLIC_CHANNEL_LIVE_COUNT", "").strip().lower() in {"1", "true", "yes"},
+        mini_app_allowed_ids=parse_ids(os.getenv("MINI_APP_ALLOWED_IDS", "")) or parse_ids(os.getenv("ADMIN_IDS", "")),
     )
 
 
@@ -234,7 +236,7 @@ class ClubAdminWebApp:
         self._public_channel_count_cache: tuple[datetime, int | None] | None = None
         self._public_channel_funnel_cache: tuple[datetime, dict[str, int] | None] | None = None
         self.learning_admin = LearningAdmin(settings.database_path, self.url)
-        self.mini_app = MiniApp(Database(settings.database_path), settings.bot_token)
+        self.mini_app = MiniApp(Database(settings.database_path), settings.bot_token, settings.mini_app_allowed_ids)
 
     def build_app(self) -> web.Application:
         app = web.Application(middlewares=[self.auth_middleware])

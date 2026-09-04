@@ -55,9 +55,10 @@ def access_state(record) -> str:
 
 
 class MiniApp:
-    def __init__(self, db: Database, bot_token: str):
+    def __init__(self, db: Database, bot_token: str, allowed_ids: set[int] | None = None):
         self.db = db
         self.bot_token = bot_token
+        self.allowed_ids = allowed_ids or set()
 
     def register(self, app: web.Application) -> None:
         app.router.add_get("/mini-app/", self.index)
@@ -86,6 +87,8 @@ class MiniApp:
             tg_user = self.init_user(request)
         except ValueError as exc:
             raise web.HTTPUnauthorized(text=str(exc)) from exc
+        if tg_user["id"] not in self.allowed_ids:
+            raise web.HTTPForbidden(text="Mini App пока доступен только пользователям из allowlist")
         await self.db.upsert_user(tg_user["id"], tg_user.get("username"),
                                   " ".join(filter(None, [tg_user.get("first_name"), tg_user.get("last_name")])) or "Telegram user")
         record = await self.db.get_user(tg_user["id"])

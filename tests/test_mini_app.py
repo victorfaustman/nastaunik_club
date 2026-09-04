@@ -8,6 +8,7 @@ import tempfile
 from urllib.parse import quote
 
 from bot.mini_app import validate_init_data
+from bot.mini_app import access_state
 from bot.database import Database
 
 
@@ -43,6 +44,11 @@ class MiniAppSchemaTests(unittest.TestCase):
                     cursor = await conn.execute("SELECT COUNT(*) FROM mini_app_materials")
                     self.assertEqual((await cursor.fetchone())[0], 0)
         asyncio.run(check())
+
+
+class PilotAccessTests(unittest.TestCase):
+    def test_access_state_still_uses_existing_membership_rules(self):
+        self.assertEqual(access_state(None), "new")
 
 
 if __name__ == "__main__":

@@ -52,6 +52,7 @@ MVP Telegram bot on `aiogram 3` for onboarding users into the private Nastaunik 
 - `CLUB_CHAT_ID` - optional private group ID for automatic removal
 - `LOG_LEVEL` - logger level, for example `INFO`
 - `MINI_APP_URL` - HTTPS URL of the Mini App, for example `https://example.com/club-admin/mini-app/`
+- `MINI_APP_ALLOWED_IDS` - temporary comma-separated Telegram IDs allowed to use Mini App API; when empty, existing `ADMIN_IDS` is used
 
 ## Notes
 
@@ -65,6 +66,8 @@ MVP Telegram bot on `aiogram 3` for onboarding users into the private Nastaunik 
 The Mini App is served by the existing `admin_web.py` aiohttp service at `/mini-app/`. Its API is public at the network layer, but every API request must include Telegram `initData` in `X-Telegram-Init-Data`; the backend verifies the HMAC with `BOT_TOKEN`, refreshes the existing user record, and derives access from the existing subscription status. No Telegram ID supplied by frontend JSON is trusted.
 
 Set `MINI_APP_URL` to the public HTTPS URL and restart the bot. The bot then exposes an `Открыть клуб` Web App menu button for members and admins. Configure the join/renew URLs, guest/expired copy, and all content from CRM → `Обучение`.
+
+During the pilot, all Mini App API functions are restricted to `MINI_APP_ALLOWED_IDS`. Remove this variable (or set the final member allowlist) when opening access to the club.
 
 Deep links use Telegram Mini App `startapp` parameters: `home`, `library`, `material_<id>`, `category_<id>`, `courses`, `course_<id>`, `consultations`, and `profile`. Example: `https://t.me/<bot_username>?startapp=course_3`.
 
