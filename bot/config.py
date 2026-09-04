@@ -22,6 +22,8 @@ class Settings:
     welcome_image_path: Path | None
     welcome_image_url: str | None
     mini_app_url: str | None
+    mini_app_preview_url: str | None
+    mini_app_allowed_ids: set[int]
 
     @property
     def owner_contact_handle(self) -> str:
@@ -64,6 +66,8 @@ def load_settings() -> Settings:
     welcome_image_path = Path(welcome_image_path_raw).expanduser().resolve() if welcome_image_path_raw else None
     welcome_image_url = os.getenv("WELCOME_IMAGE_URL", "").strip() or None
     mini_app_url = os.getenv("MINI_APP_URL", "").strip() or None
+    mini_app_preview_url = os.getenv("MINI_APP_PREVIEW_URL", "").strip() or None
+    mini_app_allowed_ids = _parse_admin_ids(os.getenv("MINI_APP_ALLOWED_IDS", "")) or set(admin_ids)
 
     return Settings(
         bot_token=bot_token,
@@ -79,4 +83,6 @@ def load_settings() -> Settings:
         welcome_image_path=welcome_image_path,
         welcome_image_url=welcome_image_url,
         mini_app_url=mini_app_url,
+        mini_app_preview_url=mini_app_preview_url,
+        mini_app_allowed_ids=mini_app_allowed_ids,
     )

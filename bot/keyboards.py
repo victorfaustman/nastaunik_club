@@ -7,11 +7,13 @@ def _join_button(text: str = "Вступить в клуб") -> InlineKeyboardBu
     return InlineKeyboardButton(text=text, callback_data="menu:join", style="success")
 
 
-def main_menu_keyboard(*, show_renew_button: bool = False, hide_entry_actions: bool = False) -> InlineKeyboardMarkup:
+def main_menu_keyboard(*, show_renew_button: bool = False, hide_entry_actions: bool = False, mini_app_url: str | None = None) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     if not hide_entry_actions:
         primary_entry_text = "Продлить участие в клубе" if show_renew_button else "Вступить в клуб"
         rows.append([_join_button(primary_entry_text)])
+    if mini_app_url:
+        rows.append([InlineKeyboardButton(text="Открыть Mini App (тест)", url=mini_app_url)])
     rows.extend(
         [
             [InlineKeyboardButton(text="Мой статус", callback_data="menu:status")],

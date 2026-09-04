@@ -165,6 +165,12 @@ def create_user_router(db: Database, settings: Settings) -> Router:
         if isinstance(target, Message) and target.from_user:
             actor_id = target.from_user.id
 
+        pilot_mini_app_url = (
+            settings.mini_app_preview_url
+            if actor_id is not None and actor_id in settings.mini_app_allowed_ids
+            else None
+        )
+
         if screen in {"payment", "join"}:
             text, reply_markup = await get_payment_screen(actor_id)
         else:
@@ -183,6 +189,7 @@ def create_user_router(db: Database, settings: Settings) -> Router:
                 text, reply_markup = texts.WELCOME, keyboards.main_menu_keyboard(
                     show_renew_button=should_show_renew_button(user),
                     hide_entry_actions=hide_entry_actions,
+                    mini_app_url=pilot_mini_app_url,
                 )
             else:
                 text, reply_markup = screen_map.get(
@@ -190,6 +197,7 @@ def create_user_router(db: Database, settings: Settings) -> Router:
                     (texts.WELCOME, keyboards.main_menu_keyboard(
                         show_renew_button=should_show_renew_button(user),
                         hide_entry_actions=hide_entry_actions,
+                        mini_app_url=pilot_mini_app_url,
                     )),
                 )
 

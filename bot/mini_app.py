@@ -62,6 +62,7 @@ class MiniApp:
 
     def register(self, app: web.Application) -> None:
         app.router.add_get("/mini-app/", self.index)
+        app.router.add_get("/mini-app/preview", self.preview)
         app.router.add_get("/mini-app/static/{filename:.*}", self.static)
         app.router.add_get("/mini-app/api/bootstrap", self.bootstrap)
         app.router.add_get("/mini-app/api/material/{material_id}", self.material)
@@ -69,6 +70,9 @@ class MiniApp:
         app.router.add_post("/mini-app/api/lesson/{lesson_id}/complete", self.lesson_complete)
 
     async def index(self, request: web.Request) -> web.StreamResponse:
+        return web.FileResponse(MINI_APP_DIR / "index.html")
+
+    async def preview(self, request: web.Request) -> web.StreamResponse:
         return web.FileResponse(MINI_APP_DIR / "index.html")
 
     async def static(self, request: web.Request) -> web.StreamResponse:

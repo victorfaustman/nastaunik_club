@@ -53,6 +53,7 @@ MVP Telegram bot on `aiogram 3` for onboarding users into the private Nastaunik 
 - `LOG_LEVEL` - logger level, for example `INFO`
 - `MINI_APP_URL` - HTTPS URL of the Mini App, for example `https://example.com/club-admin/mini-app/`
 - `MINI_APP_ALLOWED_IDS` - temporary comma-separated Telegram IDs allowed to use Mini App API; when empty, existing `ADMIN_IDS` is used
+- `MINI_APP_PREVIEW_URL` - temporary HTTP preview link shown as a button only to allowlisted users; it contains no member data and bypasses no API access
 
 ## Notes
 
