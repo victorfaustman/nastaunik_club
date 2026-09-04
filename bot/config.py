@@ -21,6 +21,7 @@ class Settings:
     log_level: str
     welcome_image_path: Path | None
     welcome_image_url: str | None
+    mini_app_url: str | None
 
     @property
     def owner_contact_handle(self) -> str:
@@ -62,6 +63,7 @@ def load_settings() -> Settings:
     welcome_image_path_raw = os.getenv("WELCOME_IMAGE_PATH", "").strip()
     welcome_image_path = Path(welcome_image_path_raw).expanduser().resolve() if welcome_image_path_raw else None
     welcome_image_url = os.getenv("WELCOME_IMAGE_URL", "").strip() or None
+    mini_app_url = os.getenv("MINI_APP_URL", "").strip() or None
 
     return Settings(
         bot_token=bot_token,
@@ -76,4 +78,5 @@ def load_settings() -> Settings:
         log_level=log_level,
         welcome_image_path=welcome_image_path,
         welcome_image_url=welcome_image_url,
+        mini_app_url=mini_app_url,
     )

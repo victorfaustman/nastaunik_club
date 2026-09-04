@@ -12,6 +12,8 @@ from aiogram.types import (
     BotCommandScopeAllPrivateChats,
     BotCommandScopeChat,
     MenuButtonCommands,
+    MenuButtonWebApp,
+    WebAppInfo,
 )
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -22,7 +24,7 @@ from bot.handlers import create_admin_router, create_user_router
 from bot.scheduler import run_subscription_checks
 
 
-async def configure_bot_interface(bot: Bot, admin_ids: set[int]) -> None:
+async def configure_bot_interface(bot: Bot, admin_ids: set[int], settings_mini_app_url: str | None = None) -> None:
     public_commands = [
         BotCommand(command="start", description="Запустить бота"),
         BotCommand(command="menu", description="Открыть главное меню"),
@@ -35,13 +37,20 @@ async def configure_bot_interface(bot: Bot, admin_ids: set[int]) -> None:
 
     await bot.set_my_commands(public_commands)
     await bot.set_my_commands(public_commands, scope=BotCommandScopeAllPrivateChats())
-    await bot.set_chat_menu_button(menu_button=MenuButtonCommands(type=MenuButtonType.COMMANDS))
+    if settings_mini_app_url:
+        await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(type=MenuButtonType.WEB_APP, text="Открыть клуб", web_app=WebAppInfo(url=settings_mini_app_url)))
+    else:
+        await bot.set_chat_menu_button(menu_button=MenuButtonCommands(type=MenuButtonType.COMMANDS))
 
     for admin_id in admin_ids:
         await bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=admin_id))
         await bot.set_chat_menu_button(
             chat_id=admin_id,
-            menu_button=MenuButtonCommands(type=MenuButtonType.COMMANDS),
+            menu_button=(
+                MenuButtonWebApp(type=MenuButtonType.WEB_APP, text="Открыть клуб", web_app=WebAppInfo(url=settings_mini_app_url))
+                if settings_mini_app_url
+                else MenuButtonCommands(type=MenuButtonType.COMMANDS)
+            ),
         )
 
 
@@ -59,7 +68,7 @@ async def main() -> None:
         token=settings.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
-    await configure_bot_interface(bot, settings.admin_ids)
+    await configure_bot_interface(bot, settings.admin_ids, settings.mini_app_url)
 
     dp = Dispatcher()
     if MAINTENANCE_MODE:

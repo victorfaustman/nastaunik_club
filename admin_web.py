@@ -19,6 +19,10 @@ from aiohttp import ClientSession, ClientTimeout
 from aiohttp import web
 from dotenv import load_dotenv
 
+from bot.database import Database
+from bot.learning_admin import LearningAdmin
+from bot.mini_app import MiniApp
+
 DEFAULT_AMOUNT_LABEL = "10 BYN / месяц"
 AMOUNT_RE = re.compile(r"(\d+(?:[.,]\d+)?)")
 MONTH_NAMES = {
@@ -229,6 +233,8 @@ class ClubAdminWebApp:
         self._admin_tables_lock = asyncio.Lock()
         self._public_channel_count_cache: tuple[datetime, int | None] | None = None
         self._public_channel_funnel_cache: tuple[datetime, dict[str, int] | None] | None = None
+        self.learning_admin = LearningAdmin(settings.database_path, self.url)
+        self.mini_app = MiniApp(Database(settings.database_path), settings.bot_token)
 
     def build_app(self) -> web.Application:
         app = web.Application(middlewares=[self.auth_middleware])
@@ -249,6 +255,9 @@ class ClubAdminWebApp:
         app.router.add_post("/payment/{payment_id}/approve", self.approve_payment)
         app.router.add_post("/payment/{payment_id}/reject", self.reject_payment)
         app.router.add_get("/health", self.health)
+        app.router.add_get("/learning", self.learning_admin.page)
+        app.router.add_post("/learning/action", self.learning_admin.action)
+        self.mini_app.register(app)
         return app
 
     def url(self, path: str = "/", **query: object) -> str:
@@ -261,7 +270,7 @@ class ClubAdminWebApp:
 
     @web.middleware
     async def auth_middleware(self, request: web.Request, handler):
-        if request.path == "/health":
+        if request.path == "/health" or request.path.startswith("/mini-app/"):
             return await handler(request)
         if not self.settings.password:
             return web.Response(text="CLUB_ADMIN_PASSWORD is not configured", status=503)
@@ -3079,6 +3088,7 @@ class ClubAdminWebApp:
             ("clients", "Клиенты", self.url("/clients")),
             ("finance", "Финансы", self.url("/finance")),
             ("broadcasts", "Рассылки", self.url("/broadcasts")),
+            ("learning", "Обучение", self.url("/learning")),
         ]
         nav_html = "".join(
             f'<a class="side-link {"active" if key == active else ""}" href="{esc(href)}">{esc(label)}</a>'

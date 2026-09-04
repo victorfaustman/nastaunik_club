@@ -29,6 +29,10 @@ MVP Telegram bot on `aiogram 3` for onboarding users into the private Nastaunik 
 - `bot/handlers/user.py` - user flows
 - `bot/handlers/admin.py` - admin flows
 - `bot/scheduler.py` - daily subscription checks
+- `bot/mini_app.py` - Telegram Mini App API and initData validation
+- `bot/learning.py` - Mini App catalog/progress queries
+- `bot/learning_admin.py` - CMS screen for Mini App content
+- `mini_app/` - mobile-first Mini App frontend
 
 ## Setup
 
@@ -47,6 +51,7 @@ MVP Telegram bot on `aiogram 3` for onboarding users into the private Nastaunik 
 - `TIMEZONE` - scheduler timezone, for example `Europe/Minsk`
 - `CLUB_CHAT_ID` - optional private group ID for automatic removal
 - `LOG_LEVEL` - logger level, for example `INFO`
+- `MINI_APP_URL` - HTTPS URL of the Mini App, for example `https://example.com/club-admin/mini-app/`
 
 ## Notes
 
@@ -54,3 +59,13 @@ MVP Telegram bot on `aiogram 3` for onboarding users into the private Nastaunik 
 - The database schema is created automatically on first run.
 - Use `python scripts/import_special_rate_members.py` to seed prepaid members who have not started the bot yet.
 - All menus and admin actions are implemented through inline buttons only.
+
+## Telegram Mini App
+
+The Mini App is served by the existing `admin_web.py` aiohttp service at `/mini-app/`. Its API is public at the network layer, but every API request must include Telegram `initData` in `X-Telegram-Init-Data`; the backend verifies the HMAC with `BOT_TOKEN`, refreshes the existing user record, and derives access from the existing subscription status. No Telegram ID supplied by frontend JSON is trusted.
+
+Set `MINI_APP_URL` to the public HTTPS URL and restart the bot. The bot then exposes an `Открыть клуб` Web App menu button for members and admins. Configure the join/renew URLs, guest/expired copy, and all content from CRM → `Обучение`.
+
+Deep links use Telegram Mini App `startapp` parameters: `home`, `library`, `material_<id>`, `category_<id>`, `courses`, `course_<id>`, `consultations`, and `profile`. Example: `https://t.me/<bot_username>?startapp=course_3`.
+
+The CMS never creates seed categories, courses, materials, or demo records. The schema migration is documented in `migrations/001_mini_app.sql` and is applied idempotently by the existing database initializer. Materials are single entities and can be reused by multiple courses and home blocks; deleting a category leaves materials intact.

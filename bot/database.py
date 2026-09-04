@@ -235,6 +235,104 @@ class Database:
                     consumed_at TEXT,
                     consumed_by_telegram_id INTEGER
                 );
+
+                CREATE TABLE IF NOT EXISTS mini_app_categories (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    slug TEXT NOT NULL UNIQUE,
+                    icon TEXT,
+                    cover_url TEXT,
+                    is_visible INTEGER NOT NULL DEFAULT 1,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS mini_app_materials (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    short_description TEXT,
+                    full_description TEXT,
+                    cover_url TEXT,
+                    telegram_url TEXT,
+                    category_id INTEGER,
+                    format TEXT,
+                    status TEXT NOT NULL DEFAULT 'draft',
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (category_id) REFERENCES mini_app_categories(id) ON DELETE SET NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS mini_app_courses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    cover_url TEXT,
+                    category_id INTEGER,
+                    status TEXT NOT NULL DEFAULT 'draft',
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (category_id) REFERENCES mini_app_categories(id) ON DELETE SET NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS mini_app_course_lessons (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    course_id INTEGER NOT NULL,
+                    material_id INTEGER NOT NULL,
+                    title_override TEXT,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    UNIQUE(course_id, material_id),
+                    FOREIGN KEY (course_id) REFERENCES mini_app_courses(id) ON DELETE CASCADE,
+                    FOREIGN KEY (material_id) REFERENCES mini_app_materials(id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS mini_app_home_sections (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    section_key TEXT NOT NULL UNIQUE,
+                    title TEXT NOT NULL,
+                    content_type TEXT NOT NULL,
+                    item_id INTEGER,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    is_visible INTEGER NOT NULL DEFAULT 1,
+                    FOREIGN KEY (item_id) REFERENCES mini_app_materials(id) ON DELETE SET NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS mini_app_consultation (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    title TEXT NOT NULL DEFAULT 'Консультации',
+                    description TEXT,
+                    body TEXT,
+                    booking_label TEXT,
+                    booking_url TEXT,
+                    contact_label TEXT,
+                    contact_url TEXT,
+                    topic_label TEXT,
+                    topic_url TEXT,
+                    show_booking INTEGER NOT NULL DEFAULT 0,
+                    show_contact INTEGER NOT NULL DEFAULT 0,
+                    show_topic INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS mini_app_user_progress (
+                    telegram_id INTEGER NOT NULL,
+                    lesson_id INTEGER NOT NULL,
+                    completed_at TEXT NOT NULL,
+                    PRIMARY KEY (telegram_id, lesson_id),
+                    FOREIGN KEY (telegram_id) REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    FOREIGN KEY (lesson_id) REFERENCES mini_app_course_lessons(id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS mini_app_favorites (
+                    telegram_id INTEGER NOT NULL,
+                    material_id INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (telegram_id, material_id),
+                    FOREIGN KEY (telegram_id) REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    FOREIGN KEY (material_id) REFERENCES mini_app_materials(id) ON DELETE CASCADE
+                );
                 """
             )
             for column_name in (

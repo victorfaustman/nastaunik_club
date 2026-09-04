@@ -1,0 +1,147 @@
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import logging
+from datetime import datetime
+from pathlib import Path
+from urllib.parse import parse_qsl
+
+from aiohttp import web
+
+from bot.database import Database
+from bot.learning import complete_lesson, get_bootstrap, get_course, get_material
+
+logger = logging.getLogger(__name__)
+MINI_APP_DIR = Path(__file__).resolve().parent.parent / "mini_app"
+
+
+def validate_init_data(init_data: str, bot_token: str, *, max_age: int = 86400) -> dict:
+    """Validate Telegram WebApp initData and return the Telegram user object."""
+    if not init_data or not bot_token:
+        raise ValueError("initData is required")
+    pairs = dict(parse_qsl(init_data, keep_blank_values=True))
+    received_hash = pairs.pop("hash", "")
+    if not received_hash:
+        raise ValueError("initData hash is missing")
+    data_check_string = "\n".join(f"{key}={pairs[key]}" for key in sorted(pairs))
+    secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+    expected_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected_hash, received_hash):
+        raise ValueError("initData signature is invalid")
+    try:
+        user = json.loads(pairs.get("user", "{}"))
+        auth_date = int(pairs.get("auth_date", "0"))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError("initData payload is invalid") from exc
+    import time
+    if not user.get("id") or auth_date <= 0 or time.time() - auth_date > max_age:
+        raise ValueError("initData is expired or has no user")
+    return user
+
+
+def access_state(record) -> str:
+    if record is None or record.current_status in {"new", "waiting_payment", "waiting_confirmation", "rejected"}:
+        return "new"
+    if record.current_status == "expired" or (
+        record.access_end_at and not record.is_lifetime_free
+        and datetime.fromisoformat(record.access_end_at) < datetime.utcnow()
+    ):
+        return "expired"
+    if record.current_status in {"active", "grace_period", "trial_active"} or record.is_lifetime_free:
+        return "active"
+    return "new"
+
+
+class MiniApp:
+    def __init__(self, db: Database, bot_token: str):
+        self.db = db
+        self.bot_token = bot_token
+
+    def register(self, app: web.Application) -> None:
+        app.router.add_get("/mini-app/", self.index)
+        app.router.add_get("/mini-app/static/{filename:.*}", self.static)
+        app.router.add_get("/mini-app/api/bootstrap", self.bootstrap)
+        app.router.add_get("/mini-app/api/material/{material_id}", self.material)
+        app.router.add_get("/mini-app/api/course/{course_id}", self.course)
+        app.router.add_post("/mini-app/api/lesson/{lesson_id}/complete", self.lesson_complete)
+
+    async def index(self, request: web.Request) -> web.StreamResponse:
+        return web.FileResponse(MINI_APP_DIR / "index.html")
+
+    async def static(self, request: web.Request) -> web.StreamResponse:
+        filename = request.match_info["filename"]
+        target = (MINI_APP_DIR / "static" / filename).resolve()
+        if MINI_APP_DIR.joinpath("static").resolve() not in target.parents or not target.is_file():
+            raise web.HTTPNotFound()
+        return web.FileResponse(target)
+
+    def init_user(self, request: web.Request) -> dict:
+        raw = request.headers.get("X-Telegram-Init-Data", "") or request.query.get("initData", "")
+        return validate_init_data(raw, self.bot_token)
+
+    async def authorised(self, request: web.Request):
+        try:
+            tg_user = self.init_user(request)
+        except ValueError as exc:
+            raise web.HTTPUnauthorized(text=str(exc)) from exc
+        await self.db.upsert_user(tg_user["id"], tg_user.get("username"),
+                                  " ".join(filter(None, [tg_user.get("first_name"), tg_user.get("last_name")])) or "Telegram user")
+        record = await self.db.get_user(tg_user["id"])
+        state = access_state(record)
+        user = {
+            "telegram_id": tg_user["id"], "username": tg_user.get("username"),
+            "first_name": tg_user.get("first_name", ""), "last_name": tg_user.get("last_name", ""),
+            "full_name": record.full_name if record else "Telegram user", "state": state,
+            "status": record.current_status if record else "new",
+            "access_end_at": record.access_end_at if record else None,
+            "amount_label": record.recurring_amount_label if record else None,
+            "is_lifetime_free": bool(record.is_lifetime_free) if record else False,
+        }
+        return tg_user, record, user
+
+    async def bootstrap(self, request: web.Request) -> web.Response:
+        _, _, user = await self.authorised(request)
+        payload = await get_bootstrap(self.db, user)
+        if user["state"] != "active":
+            for key in ("home", "materials", "categories", "courses", "consultation"):
+                payload[key] = [] if key != "consultation" else {}
+        return web.json_response(payload)
+
+    async def material(self, request: web.Request) -> web.Response:
+        _, _, user = await self.authorised(request)
+        if user["state"] != "active":
+            raise web.HTTPForbidden(text="Active membership is required")
+        try:
+            material_id = int(request.match_info["material_id"])
+        except ValueError:
+            raise web.HTTPNotFound()
+        item = await get_material(self.db, material_id)
+        if not item:
+            raise web.HTTPNotFound()
+        return web.json_response(item)
+
+    async def course(self, request: web.Request) -> web.Response:
+        _, _, user = await self.authorised(request)
+        if user["state"] != "active":
+            raise web.HTTPForbidden(text="Active membership is required")
+        try:
+            course_id = int(request.match_info["course_id"])
+        except ValueError:
+            raise web.HTTPNotFound()
+        course = await get_course(self.db, course_id, user["telegram_id"])
+        if not course:
+            raise web.HTTPNotFound()
+        return web.json_response(course)
+
+    async def lesson_complete(self, request: web.Request) -> web.Response:
+        _, _, user = await self.authorised(request)
+        if user["state"] != "active":
+            raise web.HTTPForbidden(text="Active membership is required")
+        try:
+            lesson_id = int(request.match_info["lesson_id"])
+        except ValueError:
+            raise web.HTTPNotFound()
+        await complete_lesson(self.db, user["telegram_id"], lesson_id)
+        return web.json_response({"ok": True})
