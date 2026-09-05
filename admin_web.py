@@ -236,6 +236,17 @@ class ClubAdminWebApp:
         self._public_channel_count_cache: tuple[datetime, int | None] | None = None
         self._public_channel_funnel_cache: tuple[datetime, dict[str, int] | None] | None = None
         self.learning_admin = LearningAdmin(settings.database_path, self.url)
+        def public_learning_url(path: str = "/", **query: object) -> str:
+            if path.endswith("/action"):
+                target = "/learning-action"
+            elif path.endswith("/learning"):
+                target = "/"
+            else:
+                target = "/"
+            if query:
+                target = f"{target}?{urlencode(query)}"
+            return target
+        self.public_learning_admin = LearningAdmin(settings.database_path, public_learning_url)
         self.mini_app = MiniApp(Database(settings.database_path), settings.bot_token, settings.mini_app_allowed_ids)
 
     def build_app(self) -> web.Application:
@@ -259,6 +270,8 @@ class ClubAdminWebApp:
         app.router.add_get("/health", self.health)
         app.router.add_get("/learning", self.learning_admin.page)
         app.router.add_post("/learning/action", self.learning_admin.action)
+        app.router.add_get("/public-learning", self.public_learning_admin.page)
+        app.router.add_post("/public-learning/action", self.public_learning_admin.action)
         self.mini_app.register(app)
         return app
 
