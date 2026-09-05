@@ -78,7 +78,15 @@ async def get_material(db: Database, material_id: int) -> dict[str, Any] | None:
                WHERE m.id=? AND m.status='published'""", (material_id,)
         )
         row = await cur.fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        result = dict(row)
+        cur = await conn.execute(
+            "SELECT id, file_name, stored_name, mime_type, file_size, sort_order FROM mini_app_material_files WHERE material_id=? ORDER BY sort_order, id",
+            (material_id,),
+        )
+        result["files"] = [dict(file) | {"url": f"/mini-app/media/{file['stored_name']}"} for file in await cur.fetchall()]
+        return result
 
 
 async def get_course(db: Database, course_id: int, telegram_id: int) -> dict[str, Any] | None:
@@ -111,4 +119,3 @@ async def complete_lesson(db: Database, telegram_id: int, lesson_id: int) -> Non
             (telegram_id, lesson_id, now_iso()),
         )
         await conn.commit()
-

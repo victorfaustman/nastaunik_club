@@ -15,6 +15,7 @@ from bot.learning import complete_lesson, get_bootstrap, get_course, get_materia
 
 logger = logging.getLogger(__name__)
 MINI_APP_DIR = Path(__file__).resolve().parent.parent / "mini_app"
+MEDIA_DIR = Path(__file__).resolve().parent.parent / "media" / "mini_app"
 
 
 def validate_init_data(init_data: str, bot_token: str, *, max_age: int = 86400) -> dict:
@@ -63,6 +64,7 @@ class MiniApp:
     def register(self, app: web.Application) -> None:
         app.router.add_get("/mini-app/", self.index)
         app.router.add_get("/mini-app/preview", self.preview)
+        app.router.add_get("/mini-app/media/{filename}", self.media)
         app.router.add_get("/mini-app/static/{filename:.*}", self.static)
         app.router.add_get("/mini-app/api/bootstrap", self.bootstrap)
         app.router.add_get("/mini-app/api/material/{material_id}", self.material)
@@ -74,6 +76,13 @@ class MiniApp:
 
     async def preview(self, request: web.Request) -> web.StreamResponse:
         return web.FileResponse(MINI_APP_DIR / "index.html")
+
+    async def media(self, request: web.Request) -> web.StreamResponse:
+        filename = Path(request.match_info["filename"]).name
+        target = (MEDIA_DIR / filename).resolve()
+        if MEDIA_DIR.resolve() not in target.parents or not target.is_file():
+            raise web.HTTPNotFound()
+        return web.FileResponse(target)
 
     async def static(self, request: web.Request) -> web.StreamResponse:
         filename = request.match_info["filename"]

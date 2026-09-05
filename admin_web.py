@@ -250,7 +250,7 @@ class ClubAdminWebApp:
         self.mini_app = MiniApp(Database(settings.database_path), settings.bot_token, settings.mini_app_allowed_ids)
 
     def build_app(self) -> web.Application:
-        app = web.Application(middlewares=[self.auth_middleware])
+        app = web.Application(middlewares=[self.auth_middleware], client_max_size=32 * 1024 * 1024)
         app.router.add_get("/", self.dashboard)
         app.router.add_get("/clients", self.clients)
         app.router.add_get("/finance", self.finance_page)

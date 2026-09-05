@@ -333,6 +333,18 @@ class Database:
                     FOREIGN KEY (telegram_id) REFERENCES users(telegram_id) ON DELETE CASCADE,
                     FOREIGN KEY (material_id) REFERENCES mini_app_materials(id) ON DELETE CASCADE
                 );
+
+                CREATE TABLE IF NOT EXISTS mini_app_material_files (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    material_id INTEGER NOT NULL,
+                    file_name TEXT NOT NULL,
+                    stored_name TEXT NOT NULL UNIQUE,
+                    mime_type TEXT,
+                    file_size INTEGER NOT NULL DEFAULT 0,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (material_id) REFERENCES mini_app_materials(id) ON DELETE CASCADE
+                );
                 """
             )
             for column_name in (
