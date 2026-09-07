@@ -345,6 +345,17 @@ class Database:
                     created_at TEXT NOT NULL,
                     FOREIGN KEY (material_id) REFERENCES mini_app_materials(id) ON DELETE CASCADE
                 );
+
+                CREATE TABLE IF NOT EXISTS mini_app_material_blocks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    material_id INTEGER NOT NULL,
+                    block_type TEXT NOT NULL,
+                    title TEXT,
+                    content TEXT,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (material_id) REFERENCES mini_app_materials(id) ON DELETE CASCADE
+                );
                 """
             )
             for column_name in (

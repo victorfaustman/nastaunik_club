@@ -1,0 +1,269 @@
+from __future__ import annotations
+
+import html
+import mimetypes
+import secrets
+import shutil
+import sqlite3
+from datetime import datetime
+from pathlib import Path
+
+import aiosqlite
+from aiohttp import web
+
+from bot.database import Database
+
+
+def esc(value: object) -> str:
+    return html.escape("" if value is None else str(value), quote=True)
+
+
+class LearningAdmin:
+    """Simple, content-first admin for the learning library."""
+
+    def __init__(self, database_path: Path, url_builder):
+        self.database_path = database_path
+        self.url = url_builder
+        self.schema = Database(database_path)
+
+    async def connect(self):
+        db = await aiosqlite.connect(self.database_path, timeout=8)
+        db.row_factory = sqlite3.Row
+        await db.execute("PRAGMA foreign_keys = ON")
+        return db
+
+    def material_url(self, material_id=None, **query):
+        query["material"] = "new" if material_id is None else str(material_id)
+        return self.url("/learning", **query)
+
+    async def rows(self, db, sql, params=()):
+        cur = await db.execute(sql, params)
+        return await cur.fetchall()
+
+    def categories_options(self, categories, selected=None):
+        return "".join(
+            f'<option value="{r["id"]}" {"selected" if selected and int(selected) == r["id"] else ""}>{esc(r["name"])}</option>'
+            for r in categories
+        )
+
+    async def page(self, request: web.Request) -> web.Response:
+        await self.schema.init()
+        if request.query.get("material") is not None:
+            return await self.editor(request)
+        return await self.index(request)
+
+    async def index(self, request: web.Request) -> web.Response:
+        db = await self.connect()
+        try:
+            categories = await self.rows(db, "SELECT * FROM mini_app_categories ORDER BY sort_order, name")
+            sql = """SELECT m.*, c.name category_name,
+                     (SELECT COUNT(*) FROM mini_app_material_files f WHERE f.material_id=m.id) file_count,
+                     (SELECT COUNT(*) FROM mini_app_material_blocks b WHERE b.material_id=m.id) block_count
+                     FROM mini_app_materials m
+                     LEFT JOIN mini_app_categories c ON c.id=m.category_id
+                     WHERE 1=1"""
+            params = []
+            query = str(request.query.get("q") or "").strip()
+            if query:
+                sql += " AND (m.title LIKE ? OR m.short_description LIKE ?)"
+                params.extend([f"%{query}%", f"%{query}%"])
+            status = request.query.get("status")
+            if status in {"draft", "published", "hidden"}:
+                sql += " AND m.status=?"
+                params.append(status)
+            category = request.query.get("category")
+            if category and category.isdigit():
+                sql += " AND m.category_id=?"
+                params.append(int(category))
+            sql += " ORDER BY m.updated_at DESC, m.id DESC"
+            materials = await self.rows(db, sql, params)
+        finally:
+            await db.close()
+        cards = "".join(
+            f'''<article class="material"><div><div class="eyebrow">{esc(r["format"] or "Материал")}</div>
+            <h2>{esc(r["title"])}</h2><p>{esc(r["short_description"] or "Описание ещё не добавлено")}</p>
+            <small>{esc(r["category_name"] or "Без категории")} · {r["block_count"]} блоков · {r["file_count"]} файлов</small></div>
+            <div class="actions"><span class="status {esc(r["status"])}">{esc({"draft":"Черновик","published":"Опубликован","hidden":"Скрыт"}.get(r["status"], r["status"]))}</span>
+            <a class="button" href="{self.material_url(r["id"])}">Открыть</a></div></article>'''
+            for r in materials
+        ) or '<div class="empty">Материалов пока нет. Создайте первый.</div>'
+        return web.Response(
+            text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+            <title>Материалы — Nastaunik</title><style>
+            :root{{--bg:#f6f2ed;--paper:#fff;--ink:#302621;--muted:#89776d;--line:#e5d9cf;--accent:#b9654e;--soft:#f0e8e1}}
+            *{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}}
+            main{{max-width:1040px;margin:auto;padding:28px 20px 70px}}a{{color:inherit}}h1{{font:700 38px Georgia,serif;margin:8px 0}}
+            h2{{margin:0 0 6px;font-size:20px}}p{{color:var(--muted)}}.top{{display:flex;justify-content:space-between;gap:18px;align-items:center}}
+            .button,button{{border:0;border-radius:10px;padding:11px 16px;background:var(--accent);color:#fff;text-decoration:none;font-weight:700;cursor:pointer}}
+            .secondary{{background:var(--soft);color:var(--ink)}}.toolbar{{display:flex;gap:10px;flex-wrap:wrap;margin:24px 0}}
+            input,select{{border:1px solid var(--line);border-radius:10px;padding:11px;background:#fff;font:inherit}}
+            input[name=q]{{min-width:280px;flex:1}}.material{{display:flex;justify-content:space-between;gap:20px;align-items:center;background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:20px;margin:12px 0}}
+            .material p{{margin:0 0 8px}}small,.hint{{color:var(--muted)}}.eyebrow{{font-size:11px;color:var(--accent);font-weight:700;text-transform:uppercase}}
+            .actions{{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}}.status{{padding:5px 9px;border-radius:8px;background:var(--soft);font-size:12px}}
+            .status.published{{background:#dcefe0;color:#28653f}}.empty{{background:var(--paper);border:1px dashed var(--line);border-radius:16px;padding:45px;text-align:center;color:var(--muted)}}
+            details{{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px;margin:14px 0}}summary{{cursor:pointer;font-weight:700}}
+            @media(max-width:680px){{.top,.material{{align-items:stretch;flex-direction:column}}.actions{{justify-content:flex-start}}input[name=q]{{min-width:0;width:100%}}}}
+            </style></head><body><main><p><a href="{self.url('/')}">← Админка</a></p>
+            <div class="top"><div><h1>Материалы</h1><p>Создавайте уроки и добавляйте контент. Задания добавляются отдельно.</p></div>
+            <a class="button" href="{self.material_url()}">+ Добавить материал</a></div>
+            <form class="toolbar" method="get"><input name="q" value="{esc(query)}" placeholder="Найти материал">
+            <select name="status"><option value="">Все статусы</option><option value="draft" {"selected" if status=="draft" else ""}>Черновики</option>
+            <option value="published" {"selected" if status=="published" else ""}>Опубликованные</option></select>
+            <select name="category"><option value="">Все категории</option>{self.categories_options(categories, category)}</select><button class="secondary">Найти</button></form>
+            <details><summary>+ Создать категорию</summary><form method="post" action="{self.url('/learning/action')}" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+            <input type="hidden" name="action" value="category_save"><input name="name" placeholder="Название категории" required>
+            <input name="slug" placeholder="slug" required><input type="hidden" name="is_visible" value="1"><button>Создать</button></form></details>
+            {cards}</main></body></html>''',
+            content_type="text/html",
+        )
+
+    async def editor(self, request: web.Request) -> web.Response:
+        raw_id = str(request.query.get("material") or "")
+        db = await self.connect()
+        try:
+            material = None
+            if raw_id != "new":
+                if not raw_id.isdigit():
+                    raise web.HTTPNotFound(text="Материал не найден")
+                cur = await db.execute("SELECT * FROM mini_app_materials WHERE id=?", (int(raw_id),))
+                material = await cur.fetchone()
+                if not material:
+                    raise web.HTTPNotFound(text="Материал не найден")
+            categories = await self.rows(db, "SELECT * FROM mini_app_categories ORDER BY sort_order, name")
+            files = await self.rows(db, "SELECT * FROM mini_app_material_files WHERE material_id=? ORDER BY sort_order, id", (material["id"],)) if material else []
+            blocks = await self.rows(db, "SELECT * FROM mini_app_material_blocks WHERE material_id=? ORDER BY sort_order, id", (material["id"],)) if material else []
+        finally:
+            await db.close()
+        m = material or {"id": "", "title": "", "short_description": "", "category_id": None, "format": "", "status": "draft"}
+        block_types = {"text": "Текст", "video": "Видео", "link": "Ссылка", "image": "Изображение"}
+        block_html = "".join(
+            f'''<article class="block"><div class="block-head"><b>{esc(block_types.get(b["block_type"], b["block_type"]))}</b>
+            <form method="post" action="{self.url("/learning/material/action")}"><input type="hidden" name="action" value="block_delete">
+            <input type="hidden" name="material_id" value="{m["id"]}"><input type="hidden" name="id" value="{b["id"]}">
+            <button class="danger">Удалить</button></form></div><form method="post" action="{self.url("/learning/material/action")}">
+            <input type="hidden" name="action" value="block_save"><input type="hidden" name="material_id" value="{m["id"]}">
+            <input type="hidden" name="id" value="{b["id"]}"><input type="hidden" name="block_type" value="{esc(b["block_type"])}">
+            <input name="block_title" value="{esc(b["title"] or "")}" placeholder="Заголовок блока">
+            <textarea name="block_content" placeholder="Содержимое блока">{esc(b["content"] or "")}</textarea>
+            <button class="secondary">Сохранить блок</button></form></article>'''
+            for b in blocks
+        ) or '<div class="empty">Добавьте первый блок содержания.</div>'
+        files_html = "".join(
+            f'''<div class="file"><span>📎 {esc(f["file_name"])}</span><form method="post" action="{self.url("/learning/material/action")}">
+            <input type="hidden" name="action" value="file_delete"><input type="hidden" name="material_id" value="{m["id"]}">
+            <input type="hidden" name="id" value="{f["id"]}"><button class="danger">Удалить</button></form></div>'''
+            for f in files
+        ) or '<p class="hint">Файлы ещё не добавлены.</p>'
+        title = "Новый материал" if not material else esc(material["title"])
+        return web.Response(
+            text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+            <title>{title} — Nastaunik</title><style>
+            :root{{--bg:#f6f2ed;--paper:#fff;--ink:#302621;--muted:#89776d;--line:#e5d9cf;--accent:#b9654e;--soft:#f0e8e1}}
+            *{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}}
+            main{{max-width:1040px;margin:auto;padding:24px 20px 70px}}a{{color:inherit}}h1{{font:700 34px Georgia,serif;margin:10px 0 24px}}
+            h2{{font-size:20px}}.layout{{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px}}.panel{{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:16px}}
+            label{{display:block;color:var(--muted);font-size:13px;margin:12px 0}}input,textarea,select{{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px;background:#fff;font:inherit;margin-top:5px}}
+            textarea{{min-height:115px;resize:vertical}}button,.button{{border:0;border-radius:10px;padding:10px 14px;background:var(--accent);color:#fff;font-weight:700;cursor:pointer;text-decoration:none;display:inline-block}}
+            .secondary{{background:var(--soft);color:var(--ink)}}.danger{{background:transparent;color:#a34d43;padding:3px 0}}.actions{{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}}
+            .hint{{color:var(--muted);font-size:13px}}.block,.file{{border:1px solid var(--line);border-radius:12px;padding:14px;margin:10px 0;background:#fffdfa}}
+            .block-head,.file{{display:flex;justify-content:space-between;align-items:center;gap:10px}}.empty{{border:1px dashed var(--line);padding:22px;text-align:center;color:var(--muted);border-radius:12px}}
+            @media(max-width:760px){{.layout{{grid-template-columns:1fr}}}}</style></head><body><main><p><a href="{self.url('/learning')}">← Материалы</a></p>
+            <h1>{title}</h1>{'<div class="panel" style="background:#dcefe0;color:#28653f">Сохранено</div>' if request.query.get("saved") else ''}
+            <div class="layout"><div><form id="material-form" class="panel" method="post" action="{self.url("/learning/material/action")}" enctype="multipart/form-data">
+            <input type="hidden" name="action" value="material_save"><input type="hidden" name="editor" value="1"><input type="hidden" name="id" value="{m["id"]}">
+            <h2>Основная информация</h2><label>Название<input name="title" value="{esc(m["title"])}" required autofocus></label>
+            <label>Краткое описание<textarea name="short_description">{esc(m["short_description"] or "")}</textarea></label>
+            <label>Категория<select name="category_id"><option value="">Без категории</option>{self.categories_options(categories, m["category_id"])}</select></label>
+            <label>Тип материала<input name="format" value="{esc(m["format"] or "")}" placeholder="Статья, видео, презентация"></label>
+            <label>Добавить файл<input type="file" name="material_file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,.jpg,.jpeg,.png,.webp,.mp3,.mp4"></label>
+            <div class="actions"><button>Сохранить материал</button><a class="button secondary" href="{self.url("/learning")}">Отмена</a></div></form>
+            <section class="panel"><h2>Содержание</h2><p class="hint">Добавляйте блоки в нужном порядке. Задание можно добавить позже.</p>{block_html}
+            <form method="post" action="{self.url("/learning/material/action")}" class="panel" style="background:var(--soft)">
+            <input type="hidden" name="action" value="block_save"><input type="hidden" name="material_id" value="{m["id"]}">
+            <label>Новый блок<select name="block_type"><option value="text">Текст</option><option value="video">Видео</option><option value="link">Ссылка</option><option value="image">Изображение</option></select></label>
+            <label>Заголовок<input name="block_title" placeholder="Например: Основная идея"></label>
+            <label>Содержимое<textarea name="block_content" placeholder="Текст, ссылка или описание"></textarea></label>
+            <button {"disabled" if not material else ""}>+ Добавить блок</button>{'<p class="hint">Сначала сохраните материал.</p>' if not material else ''}</form></section></div>
+            <aside><section class="panel"><h2>Публикация</h2><label>Статус<select name="status" form="material-form">
+            <option value="draft" {"selected" if m["status"]=="draft" else ""}>Черновик</option><option value="published" {"selected" if m["status"]=="published" else ""}>Опубликован</option>
+            <option value="hidden" {"selected" if m["status"]=="hidden" else ""}>Скрыт</option></select></label><p class="hint">Сначала сохраняйте как черновик, а публикуйте готовый материал.</p></section>
+            <section class="panel"><h2>Файлы</h2>{files_html}</section></aside></div></main></body></html>''',
+            content_type="text/html",
+        )
+
+    async def save_material_file(self, db, material_id: int, upload) -> None:
+        if not getattr(upload, "filename", None) or not getattr(upload, "file", None):
+            return
+        extension = Path(upload.filename).suffix.lower()
+        allowed = {".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".txt", ".md", ".jpg", ".jpeg", ".png", ".webp", ".mp3", ".mp4"}
+        if extension not in allowed:
+            raise web.HTTPBadRequest(text="Этот тип файла не поддерживается")
+        media_dir = Path(__file__).resolve().parent.parent / "media" / "mini_app"
+        media_dir.mkdir(parents=True, exist_ok=True)
+        stored_name = f"{secrets.token_urlsafe(18)}{extension}"
+        target = media_dir / stored_name
+        with target.open("wb") as output:
+            shutil.copyfileobj(upload.file, output)
+        await db.execute(
+            "INSERT INTO mini_app_material_files(material_id,file_name,stored_name,mime_type,file_size,created_at) VALUES(?,?,?,?,?,?)",
+            (material_id, Path(upload.filename).name[:250], stored_name, upload.content_type or mimetypes.guess_type(upload.filename)[0], target.stat().st_size, datetime.utcnow().isoformat(timespec="seconds")),
+        )
+
+    async def action(self, request: web.Request) -> web.Response:
+        await self.schema.init()
+        form = await request.post()
+        action = str(form.get("action") or "")
+        now = datetime.utcnow().isoformat(timespec="seconds")
+        db = await self.connect()
+        editor_id = None
+        try:
+            if action == "category_save":
+                name = str(form.get("name") or "").strip()
+                slug = str(form.get("slug") or "").strip()
+                if not name or not slug:
+                    raise web.HTTPBadRequest(text="Укажите название и slug категории")
+                await db.execute("INSERT INTO mini_app_categories(name,slug,is_visible,sort_order,created_at,updated_at) VALUES(?,?,1,0,?,?)", (name, slug, now, now))
+            elif action == "material_save":
+                item_id = int(form.get("id") or 0)
+                values = (str(form.get("title") or "").strip(), str(form.get("short_description") or "").strip() or None, str(form.get("category_id") or "").strip() or None, str(form.get("format") or "").strip() or None, str(form.get("status") or "draft"), now)
+                if not values[0]:
+                    raise web.HTTPBadRequest(text="Название материала обязательно")
+                if item_id:
+                    await db.execute("UPDATE mini_app_materials SET title=?,short_description=?,category_id=?,format=?,status=?,updated_at=? WHERE id=?", (*values, item_id))
+                else:
+                    cur = await db.execute("INSERT INTO mini_app_materials(title,short_description,category_id,format,status,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,0,?,?)", (*values, now))
+                    item_id = int(cur.lastrowid)
+                await self.save_material_file(db, item_id, form.get("material_file"))
+                editor_id = item_id if form.get("editor") == "1" else None
+            elif action == "block_save":
+                editor_id = int(form.get("material_id") or 0)
+                if not editor_id:
+                    raise web.HTTPBadRequest(text="Сначала сохраните материал")
+                block_id = int(form.get("id") or 0)
+                values = (str(form.get("block_type") or "text"), str(form.get("block_title") or "").strip() or None, str(form.get("block_content") or "").strip() or None)
+                if values[0] not in {"text", "video", "link", "image"}:
+                    raise web.HTTPBadRequest(text="Неизвестный тип блока")
+                if block_id:
+                    await db.execute("UPDATE mini_app_material_blocks SET block_type=?,title=?,content=? WHERE id=? AND material_id=?", (*values, block_id, editor_id))
+                else:
+                    await db.execute("INSERT INTO mini_app_material_blocks(material_id,block_type,title,content,sort_order,created_at) VALUES(?,?,?,?,0,?)", (editor_id, *values, now))
+            elif action == "block_delete":
+                editor_id = int(form.get("material_id") or 0)
+                await db.execute("DELETE FROM mini_app_material_blocks WHERE id=? AND material_id=?", (int(form["id"]), editor_id))
+            elif action == "file_delete":
+                editor_id = int(form.get("material_id") or 0)
+                cur = await db.execute("SELECT stored_name FROM mini_app_material_files WHERE id=? AND material_id=?", (int(form["id"]), editor_id))
+                row = await cur.fetchone()
+                if row:
+                    await db.execute("DELETE FROM mini_app_material_files WHERE id=?", (int(form["id"]),))
+                    target = Path(__file__).resolve().parent.parent / "media" / "mini_app" / Path(row["stored_name"]).name
+                    if target.is_file():
+                        target.unlink()
+            else:
+                raise web.HTTPBadRequest(text="Неизвестное действие")
+            await db.commit()
+        finally:
+            await db.close()
+        if editor_id:
+            raise web.HTTPSeeOther(location=self.material_url(editor_id, saved=1))
+        raise web.HTTPSeeOther(location=self.url("/learning", saved=1))

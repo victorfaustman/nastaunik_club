@@ -20,7 +20,7 @@ from aiohttp import web
 from dotenv import load_dotenv
 
 from bot.database import Database
-from bot.learning_admin import LearningAdmin
+from bot.learning_admin_v2 import LearningAdmin
 from bot.mini_app import MiniApp
 
 DEFAULT_AMOUNT_LABEL = "10 BYN / месяц"
@@ -270,6 +270,7 @@ class ClubAdminWebApp:
         app.router.add_get("/health", self.health)
         app.router.add_get("/learning", self.learning_admin.page)
         app.router.add_post("/learning/action", self.learning_admin.action)
+        app.router.add_post("/learning/material/action", self.learning_admin.action)
         app.router.add_get("/public-learning", self.public_learning_admin.page)
         app.router.add_post("/public-learning/action", self.public_learning_admin.action)
         self.mini_app.register(app)
