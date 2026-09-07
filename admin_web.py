@@ -273,6 +273,7 @@ class ClubAdminWebApp:
         app.router.add_post("/learning/material/action", self.learning_admin.action)
         app.router.add_get("/public-learning", self.public_learning_admin.page)
         app.router.add_post("/public-learning/action", self.public_learning_admin.action)
+        app.cleanup_ctx.append(self.learning_admin.video_worker_context)
         self.mini_app.register(app)
         return app
 

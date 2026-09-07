@@ -360,6 +360,23 @@ class Database:
                     FOREIGN KEY (material_id) REFERENCES mini_app_materials(id) ON DELETE CASCADE
                 );
 
+                CREATE TABLE IF NOT EXISTS mini_app_video_jobs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    stored_name TEXT NOT NULL UNIQUE,
+                    status TEXT NOT NULL DEFAULT 'waiting_save',
+                    original_size INTEGER NOT NULL DEFAULT 0,
+                    optimized_size INTEGER,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    error TEXT,
+                    created_at TEXT NOT NULL,
+                    started_at TEXT,
+                    completed_at TEXT,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_mini_app_video_jobs_status
+                    ON mini_app_video_jobs(status, id);
+
                 CREATE TABLE IF NOT EXISTS mini_app_tags (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,

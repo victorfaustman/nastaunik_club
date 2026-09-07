@@ -12,6 +12,25 @@ document.addEventListener('DOMContentLoaded', () => {
       font-size: 22px; line-height: 1;
     }
     .editor figure.inline-media .media-remove:hover { background: #fff0ed; }
+    .video-status-panel {
+      margin: 0 0 14px; padding: 14px 16px; border: 1px solid #e7e0da;
+      border-radius: 14px; background: #fff; color: #292421;
+    }
+    .video-status-row { display: flex; gap: 11px; align-items: center; }
+    .video-status-row + .video-status-row { margin-top: 10px; }
+    .video-status-icon {
+      width: 30px; height: 30px; flex: 0 0 30px; border-radius: 50%;
+      display: grid; place-items: center; background: #f3ece7; color: #c56349;
+    }
+    .video-status-row.is-busy .video-status-icon {
+      border: 3px solid #eaded7; border-top-color: #c56349; background: transparent;
+      animation: video-status-spin .85s linear infinite; color: transparent;
+    }
+    .video-status-copy { min-width: 0; flex: 1; }
+    .video-status-copy b, .video-status-copy small { display: block; }
+    .video-status-copy small { color: #817873; margin-top: 1px; }
+    .video-status-row.is-failed .video-status-icon { background: #fff0ed; color: #a44439; }
+    @keyframes video-status-spin { to { transform: rotate(360deg); } }
   `;
   document.head.appendChild(style);
 
@@ -51,4 +70,68 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   installButtons();
   new MutationObserver(installButtons).observe(editor, { childList: true, subtree: true });
+
+  const form = document.getElementById('article-form');
+  const materialId = form?.dataset.id;
+  if (!form || !materialId) return;
+
+  const statusPanel = document.createElement('div');
+  statusPanel.id = 'video-status-panel';
+  statusPanel.className = 'video-status-panel';
+  statusPanel.hidden = true;
+  form.querySelector('.topbar')?.after(statusPanel);
+
+  const statusCopy = {
+    waiting_save: ['○', 'Видео загружено', 'Нажмите «Сохранить», чтобы начать обработку.'],
+    queued: ['…', 'Видео в очереди', 'Страницу уже можно закрыть — сервер продолжит работу.'],
+    processing: ['', 'Адаптируем видео', 'Подготавливаем быструю версию для Mini App. Можно уйти со страницы.'],
+    ready: ['✓', 'Видео готово', 'Оптимизированная версия доступна в Mini App.'],
+    failed: ['!', 'Не удалось адаптировать видео', 'Исходный файл сохранён и остаётся доступен.'],
+  };
+  let pollTimer;
+
+  function renderVideoJobs(jobs) {
+    if (!jobs.length) {
+      statusPanel.hidden = true;
+      statusPanel.replaceChildren();
+      return false;
+    }
+    statusPanel.hidden = false;
+    statusPanel.replaceChildren(...jobs.map((job) => {
+      const [icon, title, detail] = statusCopy[job.status] || ['•', 'Видео', job.status];
+      const row = document.createElement('div');
+      row.className = `video-status-row ${['queued', 'processing'].includes(job.status) ? 'is-busy' : ''} ${job.status === 'failed' ? 'is-failed' : ''}`;
+      const iconNode = document.createElement('span');
+      iconNode.className = 'video-status-icon';
+      iconNode.textContent = icon;
+      const copy = document.createElement('span');
+      copy.className = 'video-status-copy';
+      const strong = document.createElement('b');
+      strong.textContent = title;
+      const small = document.createElement('small');
+      small.textContent = detail;
+      copy.append(strong, small);
+      row.append(iconNode, copy);
+      return row;
+    }));
+    return jobs.some((job) => ['waiting_save', 'queued', 'processing'].includes(job.status));
+  }
+
+  async function pollVideoJobs() {
+    clearTimeout(pollTimer);
+    const data = new FormData();
+    data.append('action', 'video_status');
+    data.append('material_id', materialId);
+    try {
+      const response = await fetch(form.action, { method: 'POST', body: data });
+      if (!response.ok) throw new Error('status request failed');
+      const payload = await response.json();
+      const busy = renderVideoJobs(payload.jobs || []);
+      pollTimer = setTimeout(pollVideoJobs, busy ? 1800 : 10000);
+    } catch (_) {
+      pollTimer = setTimeout(pollVideoJobs, 5000);
+    }
+  }
+
+  pollVideoJobs();
 });
