@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import mimetypes
+import re
 import secrets
 import shutil
 import sqlite3
@@ -46,6 +47,18 @@ class LearningAdmin:
             for r in categories
         )
 
+    def tag_options(self, tags, selected_ids=()):
+        selected_ids = {int(value) for value in selected_ids}
+        return "".join(
+            f'<option value="{tag["id"]}" {"selected" if tag["id"] in selected_ids else ""}>{esc(tag["name"])}</option>'
+            for tag in tags
+        )
+
+    @staticmethod
+    def tag_slug(name: str) -> str:
+        slug = re.sub(r"[^a-z0-9а-яё]+", "-", name.lower()).strip("-")
+        return slug or secrets.token_hex(4)
+
     async def page(self, request: web.Request) -> web.Response:
         await self.schema.init()
         if request.query.get("material") is not None:
@@ -56,25 +69,27 @@ class LearningAdmin:
         db = await self.connect()
         try:
             categories = await self.rows(db, "SELECT * FROM mini_app_categories ORDER BY sort_order, name")
+            tags = await self.rows(db, "SELECT * FROM mini_app_tags ORDER BY name")
             sql = """SELECT m.*, c.name category_name,
                      (SELECT COUNT(*) FROM mini_app_material_files f WHERE f.material_id=m.id) file_count,
-                     (SELECT COUNT(*) FROM mini_app_material_blocks b WHERE b.material_id=m.id) block_count
+                     (SELECT COUNT(*) FROM mini_app_material_blocks b WHERE b.material_id=m.id) block_count,
+                     (SELECT group_concat(t.name, ', ') FROM mini_app_tags t JOIN mini_app_material_tags mt ON mt.tag_id=t.id WHERE mt.material_id=m.id) tag_names
                      FROM mini_app_materials m
                      LEFT JOIN mini_app_categories c ON c.id=m.category_id
                      WHERE 1=1"""
             params = []
             query = str(request.query.get("q") or "").strip()
             if query:
-                sql += " AND (m.title LIKE ? OR m.short_description LIKE ?)"
-                params.extend([f"%{query}%", f"%{query}%"])
+                sql += " AND (m.title LIKE ? OR m.short_description LIKE ? OR EXISTS (SELECT 1 FROM mini_app_material_tags mt JOIN mini_app_tags t ON t.id=mt.tag_id WHERE mt.material_id=m.id AND t.name LIKE ?))"
+                params.extend([f"%{query}%", f"%{query}%", f"%{query}%"])
             status = request.query.get("status")
             if status in {"draft", "published", "hidden"}:
                 sql += " AND m.status=?"
                 params.append(status)
-            category = request.query.get("category")
-            if category and category.isdigit():
-                sql += " AND m.category_id=?"
-                params.append(int(category))
+            tag = request.query.get("tag")
+            if tag and tag.isdigit():
+                sql += " AND EXISTS (SELECT 1 FROM mini_app_material_tags mt WHERE mt.material_id=m.id AND mt.tag_id=?)"
+                params.append(int(tag))
             sql += " ORDER BY m.updated_at DESC, m.id DESC"
             materials = await self.rows(db, sql, params)
         finally:
@@ -82,7 +97,7 @@ class LearningAdmin:
         cards = "".join(
             f'''<article class="material"><div><div class="eyebrow">{esc(r["format"] or "Материал")}</div>
             <h2>{esc(r["title"])}</h2><p>{esc(r["short_description"] or "Описание ещё не добавлено")}</p>
-            <small>{esc(r["category_name"] or "Без категории")} · {r["block_count"]} блоков · {r["file_count"]} файлов</small></div>
+            <small>{esc(r["tag_names"] or "Без тегов")} · {r["block_count"]} блоков · {r["file_count"]} файлов</small></div>
             <div class="actions"><span class="status {esc(r["status"])}">{esc({"draft":"Черновик","published":"Опубликован","hidden":"Скрыт"}.get(r["status"], r["status"]))}</span>
             <a class="button" href="{self.material_url(r["id"])}">Открыть</a></div></article>'''
             for r in materials
@@ -109,10 +124,7 @@ class LearningAdmin:
             <form class="toolbar" method="get"><input name="q" value="{esc(query)}" placeholder="Найти материал">
             <select name="status"><option value="">Все статусы</option><option value="draft" {"selected" if status=="draft" else ""}>Черновики</option>
             <option value="published" {"selected" if status=="published" else ""}>Опубликованные</option></select>
-            <select name="category"><option value="">Все категории</option>{self.categories_options(categories, category)}</select><button class="secondary">Найти</button></form>
-            <details><summary>+ Создать категорию</summary><form method="post" action="{self.url('/learning/action')}" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-            <input type="hidden" name="action" value="category_save"><input name="name" placeholder="Название категории" required>
-            <input name="slug" placeholder="slug" required><input type="hidden" name="is_visible" value="1"><button>Создать</button></form></details>
+            <select name="tag"><option value="">Все теги</option>{self.tag_options(tags, [tag] if tag else [])}</select><button class="secondary">Найти</button></form>
             {cards}</main></body></html>''',
             content_type="text/html",
         )
@@ -130,11 +142,15 @@ class LearningAdmin:
                 if not material:
                     raise web.HTTPNotFound(text="Материал не найден")
             categories = await self.rows(db, "SELECT * FROM mini_app_categories ORDER BY sort_order, name")
+            tags = await self.rows(db, "SELECT * FROM mini_app_tags ORDER BY name")
             files = await self.rows(db, "SELECT * FROM mini_app_material_files WHERE material_id=? ORDER BY sort_order, id", (material["id"],)) if material else []
             blocks = await self.rows(db, "SELECT * FROM mini_app_material_blocks WHERE material_id=? ORDER BY sort_order, id", (material["id"],)) if material else []
+            material_tags = await self.rows(db, "SELECT tag_id FROM mini_app_material_tags WHERE material_id=?", (material["id"],)) if material else []
         finally:
             await db.close()
-        m = material or {"id": "", "title": "", "short_description": "", "category_id": None, "format": "", "status": "draft"}
+        m = material or {"id": "", "title": "", "short_description": "", "full_description": "", "cover_url": "", "category_id": None, "format": "", "status": "draft"}
+        selected_tag_ids = [row["tag_id"] for row in material_tags]
+        tag_chips = " ".join(f'<span class="tag">{esc(t["name"])}</span>' for t in tags if t["id"] in selected_tag_ids)
         block_types = {"text": "Текст", "video": "Видео", "link": "Ссылка", "image": "Изображение"}
         block_html = "".join(
             f'''<article class="block"><div class="block-head"><b>{esc(block_types.get(b["block_type"], b["block_type"]))}</b>
@@ -168,13 +184,17 @@ class LearningAdmin:
             .hint{{color:var(--muted);font-size:13px}}.block,.file{{border:1px solid var(--line);border-radius:12px;padding:14px;margin:10px 0;background:#fffdfa}}
             .block-head,.file{{display:flex;justify-content:space-between;align-items:center;gap:10px}}.empty{{border:1px dashed var(--line);padding:22px;text-align:center;color:var(--muted);border-radius:12px}}
             @media(max-width:760px){{.layout{{grid-template-columns:1fr}}}}</style></head><body><main><p><a href="{self.url('/learning')}">← Материалы</a></p>
-            <h1>{title}</h1>{'<div class="panel" style="background:#dcefe0;color:#28653f">Сохранено</div>' if request.query.get("saved") else ''}
+            <h1>{title}</h1>{f'<img src="{esc(m["cover_url"])}" alt="" style="display:block;width:100%;max-height:240px;object-fit:cover;border-radius:16px;margin-bottom:18px">' if m["cover_url"] else ''}{'<div class="panel" style="background:#dcefe0;color:#28653f">Сохранено</div>' if request.query.get("saved") else ''}
             <div class="layout"><div><form id="material-form" class="panel" method="post" action="{self.url("/learning/material/action")}" enctype="multipart/form-data">
             <input type="hidden" name="action" value="material_save"><input type="hidden" name="editor" value="1"><input type="hidden" name="id" value="{m["id"]}">
             <h2>Основная информация</h2><label>Название<input name="title" value="{esc(m["title"])}" required autofocus></label>
             <label>Краткое описание<textarea name="short_description">{esc(m["short_description"] or "")}</textarea></label>
-            <label>Категория<select name="category_id"><option value="">Без категории</option>{self.categories_options(categories, m["category_id"])}</select></label>
+            <label>Содержание<textarea name="full_description" id="content-editor" placeholder="Начните писать материал…">{esc(m["full_description"] or "")}</textarea><span class="hint">Поддерживаются обычный текст, ссылки, списки и форматирование на следующем этапе.</span></label>
+            <label>Теги<select name="tag_ids" multiple size="4">{self.tag_options(tags, selected_tag_ids)}</select><span class="hint">Можно выбрать несколько тегов.</span></label>
+            <details><summary>+ Создать новый тег</summary><form method="post" action="{self.url("/learning/material/action")}" style="margin-top:10px"><input type="hidden" name="action" value="tag_create"><input type="hidden" name="return_material" value="{m["id"]}"><input name="tag_name" placeholder="Например: Методика" required><button>Создать тег</button></form></details><div class="tags">{tag_chips}</div>
+            <input type="hidden" name="category_id" value="">
             <label>Тип материала<input name="format" value="{esc(m["format"] or "")}" placeholder="Статья, видео, презентация"></label>
+            <label>Обложка<input type="file" name="cover_file" accept=".jpg,.jpeg,.png,.webp"></label>
             <label>Добавить файл<input type="file" name="material_file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,.jpg,.jpeg,.png,.webp,.mp3,.mp4"></label>
             <div class="actions"><button>Сохранить материал</button><a class="button secondary" href="{self.url("/learning")}">Отмена</a></div></form>
             <section class="panel"><h2>Содержание</h2><p class="hint">Добавляйте блоки в нужном порядке. Задание можно добавить позже.</p>{block_html}
@@ -209,6 +229,20 @@ class LearningAdmin:
             (material_id, Path(upload.filename).name[:250], stored_name, upload.content_type or mimetypes.guess_type(upload.filename)[0], target.stat().st_size, datetime.utcnow().isoformat(timespec="seconds")),
         )
 
+    async def save_cover(self, db, material_id: int, upload) -> None:
+        if not getattr(upload, "filename", None) or not getattr(upload, "file", None):
+            return
+        extension = Path(upload.filename).suffix.lower()
+        if extension not in {".jpg", ".jpeg", ".png", ".webp"}:
+            raise web.HTTPBadRequest(text="Обложка должна быть JPG, PNG или WEBP")
+        media_dir = Path(__file__).resolve().parent.parent / "media" / "mini_app"
+        media_dir.mkdir(parents=True, exist_ok=True)
+        stored_name = f"cover-{secrets.token_urlsafe(18)}{extension}"
+        target = media_dir / stored_name
+        with target.open("wb") as output:
+            shutil.copyfileobj(upload.file, output)
+        await db.execute("UPDATE mini_app_materials SET cover_url=?, updated_at=? WHERE id=?", (f"/mini-app/media/{stored_name}", datetime.utcnow().isoformat(timespec="seconds"), material_id))
+
     async def action(self, request: web.Request) -> web.Response:
         await self.schema.init()
         form = await request.post()
@@ -217,22 +251,32 @@ class LearningAdmin:
         db = await self.connect()
         editor_id = None
         try:
-            if action == "category_save":
-                name = str(form.get("name") or "").strip()
-                slug = str(form.get("slug") or "").strip()
-                if not name or not slug:
-                    raise web.HTTPBadRequest(text="Укажите название и slug категории")
-                await db.execute("INSERT INTO mini_app_categories(name,slug,is_visible,sort_order,created_at,updated_at) VALUES(?,?,1,0,?,?)", (name, slug, now, now))
+            if action == "tag_create":
+                name = str(form.get("tag_name") or "").strip()
+                if not name:
+                    raise web.HTTPBadRequest(text="Укажите название тега")
+                slug = self.tag_slug(name)
+                await db.execute("INSERT OR IGNORE INTO mini_app_tags(name,slug,created_at) VALUES(?,?,?)", (name, slug, now))
+                cur = await db.execute("SELECT id FROM mini_app_tags WHERE name=?", (name,))
+                tag_row = await cur.fetchone()
+                editor_id = int(form.get("return_material") or 0) or None
+                if editor_id and tag_row:
+                    await db.execute("INSERT OR IGNORE INTO mini_app_material_tags(material_id,tag_id) VALUES(?,?)", (editor_id, tag_row["id"]))
             elif action == "material_save":
                 item_id = int(form.get("id") or 0)
-                values = (str(form.get("title") or "").strip(), str(form.get("short_description") or "").strip() or None, str(form.get("category_id") or "").strip() or None, str(form.get("format") or "").strip() or None, str(form.get("status") or "draft"), now)
+                values = (str(form.get("title") or "").strip(), str(form.get("short_description") or "").strip() or None, str(form.get("full_description") or "").strip() or None, str(form.get("format") or "").strip() or None, str(form.get("status") or "draft"), now)
                 if not values[0]:
                     raise web.HTTPBadRequest(text="Название материала обязательно")
                 if item_id:
-                    await db.execute("UPDATE mini_app_materials SET title=?,short_description=?,category_id=?,format=?,status=?,updated_at=? WHERE id=?", (*values, item_id))
+                    await db.execute("UPDATE mini_app_materials SET title=?,short_description=?,full_description=?,format=?,status=?,updated_at=? WHERE id=?", (*values, item_id))
                 else:
-                    cur = await db.execute("INSERT INTO mini_app_materials(title,short_description,category_id,format,status,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,0,?,?)", (*values, now))
+                    cur = await db.execute("INSERT INTO mini_app_materials(title,short_description,full_description,format,status,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,0,?,?)", (*values, now))
                     item_id = int(cur.lastrowid)
+                await db.execute("DELETE FROM mini_app_material_tags WHERE material_id=?", (item_id,))
+                for tag_id in form.getall("tag_ids"):
+                    if str(tag_id).isdigit():
+                        await db.execute("INSERT OR IGNORE INTO mini_app_material_tags(material_id,tag_id) VALUES(?,?)", (item_id, int(tag_id)))
+                await self.save_cover(db, item_id, form.get("cover_file"))
                 await self.save_material_file(db, item_id, form.get("material_file"))
                 editor_id = item_id if form.get("editor") == "1" else None
             elif action == "block_save":

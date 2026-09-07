@@ -356,6 +356,21 @@ class Database:
                     created_at TEXT NOT NULL,
                     FOREIGN KEY (material_id) REFERENCES mini_app_materials(id) ON DELETE CASCADE
                 );
+
+                CREATE TABLE IF NOT EXISTS mini_app_tags (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    slug TEXT NOT NULL UNIQUE,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS mini_app_material_tags (
+                    material_id INTEGER NOT NULL,
+                    tag_id INTEGER NOT NULL,
+                    PRIMARY KEY (material_id, tag_id),
+                    FOREIGN KEY (material_id) REFERENCES mini_app_materials(id) ON DELETE CASCADE,
+                    FOREIGN KEY (tag_id) REFERENCES mini_app_tags(id) ON DELETE CASCADE
+                );
                 """
             )
             for column_name in (
