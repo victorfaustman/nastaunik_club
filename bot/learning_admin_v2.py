@@ -19,6 +19,13 @@ def esc(value: object) -> str:
     return html.escape("" if value is None else str(value), quote=True)
 
 
+def clean_rich_text(value: object) -> str:
+    text = "" if value is None else str(value)
+    allowed = r"(?i)(?:/?(?:p|br|strong|b|em|i|h2|h3|ul|ol|li|blockquote|a)(?:\s+[^>]*)?)"
+    text = re.sub(r"<(?!"+allowed+r">)[^>]*>", "", text)
+    text = re.sub(r'(<a\b(?![^>]*\brel=)[^>]*)>', r'\1 rel="noopener noreferrer">', text, flags=re.I)
+    return text
+
 class LearningAdmin:
     """Simple, content-first admin for the learning library."""
 
@@ -99,7 +106,7 @@ class LearningAdmin:
             <h2>{esc(r["title"])}</h2><p>{esc(r["short_description"] or "Описание ещё не добавлено")}</p>
             <small>{esc(r["tag_names"] or "Без тегов")} · {r["block_count"]} блоков · {r["file_count"]} файлов</small></div>
             <div class="actions"><span class="status {esc(r["status"])}">{esc({"draft":"Черновик","published":"Опубликован","hidden":"Скрыт"}.get(r["status"], r["status"]))}</span>
-            <a class="button" href="{self.material_url(r["id"])}">Открыть</a></div></article>'''
+            <a class="button" href="{self.material_url(r["id"])}">Открыть</a><form method="post" action="{self.url("/learning/material/action")}"><input type="hidden" name="action" value="material_duplicate"><input type="hidden" name="id" value="{r["id"]}"><button class="secondary">Дублировать</button></form></div></article>'''
             for r in materials
         ) or '<div class="empty">Материалов пока нет. Создайте первый.</div>'
         return web.Response(
@@ -151,6 +158,8 @@ class LearningAdmin:
         m = material or {"id": "", "title": "", "short_description": "", "full_description": "", "cover_url": "", "category_id": None, "format": "", "status": "draft"}
         selected_tag_ids = [row["tag_id"] for row in material_tags]
         tag_chips = " ".join(f'<span class="tag">{esc(t["name"])}</span>' for t in tags if t["id"] in selected_tag_ids)
+        if material and request.query.get("preview"):
+            return self.preview(material, blocks, files, tags, selected_tag_ids)
         block_types = {"text": "Текст", "video": "Видео", "link": "Ссылка", "image": "Изображение"}
         block_html = "".join(
             f'''<article class="block"><div class="block-head"><b>{esc(block_types.get(b["block_type"], b["block_type"]))}</b>
@@ -171,6 +180,9 @@ class LearningAdmin:
             for f in files
         ) or '<p class="hint">Файлы ещё не добавлены.</p>'
         title = "Новый материал" if not material else esc(material["title"])
+        danger_html = ""
+        if material:
+            danger_html = f'''<section class="panel"><h2>Опасная зона</h2><form method="post" action="{self.url("/learning/material/action")}" onsubmit="return confirm('Удалить этот материал?')"><input type="hidden" name="action" value="material_delete"><input type="hidden" name="id" value="{m["id"]}"><button class="danger">Удалить материал</button></form></section>'''
         return web.Response(
             text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
             <title>{title} — Nastaunik</title><style>
@@ -185,18 +197,18 @@ class LearningAdmin:
             .block-head,.file{{display:flex;justify-content:space-between;align-items:center;gap:10px}}.empty{{border:1px dashed var(--line);padding:22px;text-align:center;color:var(--muted);border-radius:12px}}
             @media(max-width:760px){{.layout{{grid-template-columns:1fr}}}}</style></head><body><main><p><a href="{self.url('/learning')}">← Материалы</a></p>
             <h1>{title}</h1>{f'<img src="{esc(m["cover_url"])}" alt="" style="display:block;width:100%;max-height:240px;object-fit:cover;border-radius:16px;margin-bottom:18px">' if m["cover_url"] else ''}{'<div class="panel" style="background:#dcefe0;color:#28653f">Сохранено</div>' if request.query.get("saved") else ''}
-            <div class="layout"><div><form id="material-form" class="panel" method="post" action="{self.url("/learning/material/action")}" enctype="multipart/form-data">
+            <div class="layout"><div><form id="material-form" data-id="{m["id"]}" class="panel" method="post" action="{self.url("/learning/material/action")}" enctype="multipart/form-data">
             <input type="hidden" name="action" value="material_save"><input type="hidden" name="editor" value="1"><input type="hidden" name="id" value="{m["id"]}">
             <h2>Основная информация</h2><label>Название<input name="title" value="{esc(m["title"])}" required autofocus></label>
             <label>Краткое описание<textarea name="short_description">{esc(m["short_description"] or "")}</textarea></label>
-            <label>Содержание<textarea name="full_description" id="content-editor" placeholder="Начните писать материал…">{esc(m["full_description"] or "")}</textarea><span class="hint">Поддерживаются обычный текст, ссылки, списки и форматирование на следующем этапе.</span></label>
+            <label>Содержание<div class="toolbar"><button type="button" class="secondary" data-cmd="bold"><b>Ж</b></button><button type="button" class="secondary" data-cmd="italic"><i>К</i></button><button type="button" class="secondary" data-cmd="insertUnorderedList">• Список</button><button type="button" class="secondary" data-cmd="insertOrderedList">1. Список</button><button type="button" class="secondary" data-cmd="formatBlock" data-value="h2">Заголовок</button></div><div id="content-editor" class="rich-editor" contenteditable="true">{clean_rich_text(m["full_description"] or "")}</div><textarea name="full_description" id="content-source" hidden></textarea><span id="save-state" class="hint">Пишите как в редакторе статьи. Форматирование сохраняется автоматически.</span></label>
             <label>Теги<select name="tag_ids" multiple size="4">{self.tag_options(tags, selected_tag_ids)}</select><span class="hint">Можно выбрать несколько тегов.</span></label>
             <details><summary>+ Создать новый тег</summary><form method="post" action="{self.url("/learning/material/action")}" style="margin-top:10px"><input type="hidden" name="action" value="tag_create"><input type="hidden" name="return_material" value="{m["id"]}"><input name="tag_name" placeholder="Например: Методика" required><button>Создать тег</button></form></details><div class="tags">{tag_chips}</div>
             <input type="hidden" name="category_id" value="">
             <label>Тип материала<input name="format" value="{esc(m["format"] or "")}" placeholder="Статья, видео, презентация"></label>
             <label>Обложка<input type="file" name="cover_file" accept=".jpg,.jpeg,.png,.webp"></label>
             <label>Добавить файл<input type="file" name="material_file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,.jpg,.jpeg,.png,.webp,.mp3,.mp4"></label>
-            <div class="actions"><button>Сохранить материал</button><a class="button secondary" href="{self.url("/learning")}">Отмена</a></div></form>
+            <div class="actions"><button>Сохранить материал</button>{f'<a class="button secondary" href="{self.material_url(m["id"], preview=1)}" target="_blank">Предпросмотр</a>' if material else ''}<a class="button secondary" href="{self.url("/learning")}">Отмена</a></div></form>
             <section class="panel"><h2>Содержание</h2><p class="hint">Добавляйте блоки в нужном порядке. Задание можно добавить позже.</p>{block_html}
             <form method="post" action="{self.url("/learning/material/action")}" class="panel" style="background:var(--soft)">
             <input type="hidden" name="action" value="block_save"><input type="hidden" name="material_id" value="{m["id"]}">
@@ -207,9 +219,21 @@ class LearningAdmin:
             <aside><section class="panel"><h2>Публикация</h2><label>Статус<select name="status" form="material-form">
             <option value="draft" {"selected" if m["status"]=="draft" else ""}>Черновик</option><option value="published" {"selected" if m["status"]=="published" else ""}>Опубликован</option>
             <option value="hidden" {"selected" if m["status"]=="hidden" else ""}>Скрыт</option></select></label><p class="hint">Сначала сохраняйте как черновик, а публикуйте готовый материал.</p></section>
-            <section class="panel"><h2>Файлы</h2>{files_html}</section></aside></div></main></body></html>''',
+            <section class="panel"><h2>Файлы</h2>{files_html}</section>{danger_html}</aside></div></main><script>
+            const form=document.getElementById('material-form'),editor=document.getElementById('content-editor'),source=document.getElementById('content-source'),saveState=document.getElementById('save-state');function sync(){{source.value=editor.innerHTML}}document.querySelectorAll('[data-cmd]').forEach(b=>b.onclick=()=>{{editor.focus();document.execCommand(b.dataset.cmd,false,b.dataset.value||null);sync()}});sync();let timer;function autosave(){{if(!form.dataset.id)return;sync();saveState.textContent='Сохраняем…';const data=new FormData(form);data.delete('material_file');data.delete('cover_file');data.append('autosave','1');fetch(form.action,{{method:'POST',body:data}}).then(r=>r.ok?r.json():Promise.reject()).then(()=>saveState.textContent='Сохранено').catch(()=>saveState.textContent='Ошибка сохранения')}}editor.addEventListener('input',()=>{{clearTimeout(timer);timer=setTimeout(autosave,900)}});form.addEventListener('change',()=>{{clearTimeout(timer);timer=setTimeout(autosave,900)}});</script></body></html>''',
             content_type="text/html",
         )
+
+    def preview(self, material, blocks, files, tags, selected_tag_ids):
+        block_types = {"text": "Текст", "video": "Видео", "link": "Ссылка", "image": "Изображение"}
+        blocks_html = "".join(
+            f'<article class="preview-block"><small>{esc(block_types.get(b["block_type"], b["block_type"]))}</small>'
+            f'{("<h2>" + esc(b["title"]) + "</h2>") if b["title"] else ""}{clean_rich_text(b["content"] or "")}'
+            for b in blocks
+        )
+        file_html = "".join(f'<li>{esc(f["file_name"])}</li>' for f in files)
+        tag_html = " ".join(f'<span class="tag">{esc(t["name"])}</span>' for t in tags if t["id"] in selected_tag_ids)
+        return web.Response(text=f'''<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Предпросмотр — {esc(material["title"])}</title><style>body{{margin:0;background:#f6f2ed;color:#302621;font:16px/1.65 system-ui,sans-serif}}main{{max-width:760px;margin:auto;background:#fff;padding:34px 24px;min-height:100vh}}h1{{font:700 38px Georgia,serif;line-height:1.15}}.muted,small{{color:#89776d}}.tag{{display:inline-block;background:#f0e8e1;border-radius:999px;padding:3px 10px;margin:2px;font-size:12px}}.preview-block{{border-top:1px solid #e5d9cf;padding:18px 0}}img{{max-width:100%}}</style><main><p class="muted">Предпросмотр материала</p><h1>{esc(material["title"])}</h1><p class="muted">{esc(material["short_description"] or "")}</p><div>{tag_html}</div><section>{clean_rich_text(material["full_description"] or "")}</section>{blocks_html}{("<h3>Файлы</h3><ul>" + file_html + "</ul>") if file_html else ""}</main></html>''', content_type="text/html")
 
     async def save_material_file(self, db, material_id: int, upload) -> None:
         if not getattr(upload, "filename", None) or not getattr(upload, "file", None):
@@ -303,11 +327,28 @@ class LearningAdmin:
                     target = Path(__file__).resolve().parent.parent / "media" / "mini_app" / Path(row["stored_name"]).name
                     if target.is_file():
                         target.unlink()
+            elif action == "material_delete":
+                item_id = int(form.get("id") or 0)
+                if not item_id:
+                    raise web.HTTPBadRequest(text="Материал не указан")
+                await db.execute("DELETE FROM mini_app_materials WHERE id=?", (item_id,))
+            elif action == "material_duplicate":
+                source_id = int(form.get("id") or 0)
+                cur = await db.execute("SELECT * FROM mini_app_materials WHERE id=?", (source_id,))
+                source = await cur.fetchone()
+                if not source:
+                    raise web.HTTPNotFound(text="Материал не найден")
+                cur = await db.execute("INSERT INTO mini_app_materials(title,short_description,full_description,cover_url,telegram_url,category_id,format,status,sort_order,created_at,updated_at) SELECT title || ' — копия',short_description,full_description,cover_url,telegram_url,category_id,format,'draft',sort_order,?,? FROM mini_app_materials WHERE id=?", (now, now, source_id))
+                editor_id = int(cur.lastrowid)
+                await db.execute("INSERT INTO mini_app_material_tags(material_id,tag_id) SELECT ?,tag_id FROM mini_app_material_tags WHERE material_id=?", (editor_id, source_id))
+                await db.execute("INSERT INTO mini_app_material_blocks(material_id,block_type,title,content,sort_order,created_at) SELECT ?,block_type,title,content,sort_order,? FROM mini_app_material_blocks WHERE material_id=?", (editor_id, now, source_id))
             else:
                 raise web.HTTPBadRequest(text="Неизвестное действие")
             await db.commit()
         finally:
             await db.close()
+        if action == "material_save" and form.get("autosave") == "1":
+            return web.json_response({"ok": True, "material_id": item_id})
         if editor_id:
             raise web.HTTPSeeOther(location=self.material_url(editor_id, saved=1))
         raise web.HTTPSeeOther(location=self.url("/learning", saved=1))
