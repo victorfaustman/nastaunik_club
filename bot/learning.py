@@ -115,7 +115,9 @@ async def get_catalog(db: Database, *, category_id: int | None = None, query: st
             material["preview_kind"] = preview_kind
         cur = await conn.execute("SELECT * FROM mini_app_categories WHERE is_visible=1 ORDER BY sort_order, name")
         categories = [dict(row) for row in await cur.fetchall()]
-        return {"materials": materials, "categories": categories}
+        cur = await conn.execute("SELECT id,name,slug FROM mini_app_tags ORDER BY name")
+        tags = [dict(row) for row in await cur.fetchall()]
+        return {"materials": materials, "categories": categories, "tags": tags}
 
 
 async def get_bootstrap(db: Database, user: dict[str, Any]) -> dict[str, Any]:
@@ -137,7 +139,8 @@ async def get_bootstrap(db: Database, user: dict[str, Any]) -> dict[str, Any]:
         cur = await conn.execute("SELECT * FROM mini_app_consultation WHERE id=1")
         consultation = dict(await cur.fetchone() or {})
     return {"user": user, "settings": settings, "home": home, "materials": catalog["materials"],
-            "categories": catalog["categories"], "courses": courses, "consultation": consultation}
+            "categories": catalog["categories"], "tags": catalog["tags"], "courses": courses,
+            "consultation": consultation}
 
 
 async def get_material(db: Database, material_id: int) -> dict[str, Any] | None:

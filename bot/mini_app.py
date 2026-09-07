@@ -121,7 +121,7 @@ class MiniApp:
         _, _, user = await self.authorised(request)
         payload = await get_bootstrap(self.db, user)
         if user["state"] != "active":
-            for key in ("home", "materials", "categories", "courses", "consultation"):
+            for key in ("home", "materials", "categories", "tags", "courses", "consultation"):
                 payload[key] = [] if key != "consultation" else {}
         return web.json_response(payload)
 

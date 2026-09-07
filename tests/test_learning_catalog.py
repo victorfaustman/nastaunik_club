@@ -39,11 +39,13 @@ class LearningCatalogCardTests(unittest.TestCase):
                     )
                     await conn.commit()
 
-                material = (await get_catalog(database))["materials"][0]
+                catalog = await get_catalog(database)
+                material = catalog["materials"][0]
                 self.assertEqual(material["preview_url"], "/mini-app/media/article.jpg")
                 self.assertEqual(material["preview_kind"], "image")
                 self.assertEqual(material["tags"][0]["name"], "Практика")
                 self.assertNotIn("color", material["tags"][0])
+                self.assertEqual(catalog["tags"][0]["name"], "Практика")
 
         asyncio.run(check())
 
