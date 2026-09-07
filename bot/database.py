@@ -341,6 +341,8 @@ class Database:
                     stored_name TEXT NOT NULL UNIQUE,
                     mime_type TEXT,
                     file_size INTEGER NOT NULL DEFAULT 0,
+                    title TEXT,
+                    description TEXT,
                     sort_order INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY (material_id) REFERENCES mini_app_materials(id) ON DELETE CASCADE
@@ -352,6 +354,7 @@ class Database:
                     block_type TEXT NOT NULL,
                     title TEXT,
                     content TEXT,
+                    description TEXT,
                     sort_order INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY (material_id) REFERENCES mini_app_materials(id) ON DELETE CASCADE
@@ -361,7 +364,9 @@ class Database:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
                     slug TEXT NOT NULL UNIQUE,
-                    created_at TEXT NOT NULL
+                    color TEXT NOT NULL DEFAULT '#D97757',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT
                 );
 
                 CREATE TABLE IF NOT EXISTS mini_app_material_tags (
@@ -386,6 +391,11 @@ class Database:
                 await self._ensure_column(db, "users", column_name, "TEXT")
             await self._ensure_column(db, "users", "is_lifetime_free", "INTEGER NOT NULL DEFAULT 0")
             await self._ensure_column(db, "users", "lifetime_free_granted_at", "TEXT")
+            await self._ensure_column(db, "mini_app_tags", "color", "TEXT NOT NULL DEFAULT '#D97757'")
+            await self._ensure_column(db, "mini_app_tags", "updated_at", "TEXT")
+            await self._ensure_column(db, "mini_app_material_files", "title", "TEXT")
+            await self._ensure_column(db, "mini_app_material_files", "description", "TEXT")
+            await self._ensure_column(db, "mini_app_material_blocks", "description", "TEXT")
             await db.commit()
 
     async def _ensure_column(self, db: aiosqlite.Connection, table_name: str, column_name: str, column_definition: str) -> None:

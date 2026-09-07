@@ -82,17 +82,17 @@ async def get_material(db: Database, material_id: int) -> dict[str, Any] | None:
             return None
         result = dict(row)
         cur = await conn.execute(
-            "SELECT id, file_name, stored_name, mime_type, file_size, sort_order FROM mini_app_material_files WHERE material_id=? ORDER BY sort_order, id",
+            "SELECT id, file_name, stored_name, mime_type, file_size, title, description, sort_order FROM mini_app_material_files WHERE material_id=? ORDER BY sort_order, id",
             (material_id,),
         )
         result["files"] = [dict(file) | {"url": f"/mini-app/media/{file['stored_name']}"} for file in await cur.fetchall()]
         cur = await conn.execute(
-            "SELECT id, block_type, title, content, sort_order FROM mini_app_material_blocks WHERE material_id=? ORDER BY sort_order, id",
+            "SELECT id, block_type, title, content, description, sort_order FROM mini_app_material_blocks WHERE material_id=? ORDER BY sort_order, id",
             (material_id,),
         )
         result["blocks"] = [dict(block) for block in await cur.fetchall()]
         cur = await conn.execute(
-            "SELECT t.id, t.name, t.slug FROM mini_app_tags t JOIN mini_app_material_tags mt ON mt.tag_id=t.id WHERE mt.material_id=? ORDER BY t.name",
+            "SELECT t.id, t.name, t.slug, t.color FROM mini_app_tags t JOIN mini_app_material_tags mt ON mt.tag_id=t.id WHERE mt.material_id=? ORDER BY t.name",
             (material_id,),
         )
         result["tags"] = [dict(tag) for tag in await cur.fetchall()]
