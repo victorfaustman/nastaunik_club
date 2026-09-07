@@ -23,6 +23,10 @@ document.addEventListener('DOMContentLoaded', () => {
   window.sync = cleanSync;
 
   function addRemoveButton(figure) {
+    figure.querySelectorAll('video').forEach((video) => {
+      video.preload = 'metadata';
+      video.playsInline = true;
+    });
     if (figure.querySelector(':scope > .media-remove')) return;
     const button = document.createElement('button');
     button.type = 'button';
