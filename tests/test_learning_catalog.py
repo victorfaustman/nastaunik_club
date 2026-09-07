@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from bot.database import Database
-from bot.learning import complete_material, get_catalog, get_material, toggle_material_like
+from bot.learning import complete_material, get_bootstrap, get_catalog, get_material, toggle_material_like
 
 
 class LearningCatalogCardTests(unittest.TestCase):
@@ -45,7 +45,38 @@ class LearningCatalogCardTests(unittest.TestCase):
                 self.assertEqual(material["preview_kind"], "image")
                 self.assertEqual(material["tags"][0]["name"], "Практика")
                 self.assertNotIn("color", material["tags"][0])
+                self.assertNotIn("full_description", material)
                 self.assertEqual(catalog["tags"][0]["name"], "Практика")
+
+        asyncio.run(check())
+
+    def test_guest_catalog_marks_only_paid_materials_as_locked(self):
+        async def check():
+            with tempfile.TemporaryDirectory() as directory:
+                database_path = Path(directory) / "mini.db"
+                database = Database(database_path)
+                await database.init()
+                await database.upsert_user(51, "guest", "Guest")
+                stamp = datetime.utcnow().isoformat(timespec="seconds")
+                async with database.connect() as conn:
+                    await conn.executemany(
+                        """INSERT INTO mini_app_materials(
+                               title,full_description,is_free,status,sort_order,created_at,updated_at
+                           ) VALUES(?,?,?,'published',0,?,?)""",
+                        [
+                            ("Бесплатный", '<img src="/mini-app/media/free.jpg">', 1, stamp, stamp),
+                            ("Для клуба", '<video src="/mini-app/media/paid.mp4"></video>', 0, stamp, stamp),
+                        ],
+                    )
+                    await conn.commit()
+
+                payload = await get_bootstrap(database, {"telegram_id": 51, "state": "new"})
+                materials = {item["title"]: item for item in payload["materials"]}
+                self.assertFalse(materials["Бесплатный"]["locked"])
+                self.assertEqual(materials["Бесплатный"]["preview_url"], "/mini-app/media/free.jpg")
+                self.assertTrue(materials["Для клуба"]["locked"])
+                self.assertIsNone(materials["Для клуба"]["preview_url"])
+                self.assertNotIn("full_description", materials["Для клуба"])
 
         asyncio.run(check())
 

@@ -257,6 +257,7 @@ class Database:
                     telegram_url TEXT,
                     category_id INTEGER,
                     format TEXT,
+                    is_free INTEGER NOT NULL DEFAULT 0,
                     status TEXT NOT NULL DEFAULT 'draft',
                     sort_order INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
@@ -435,6 +436,7 @@ class Database:
             await self._ensure_column(db, "users", "lifetime_free_granted_at", "TEXT")
             await self._ensure_column(db, "mini_app_tags", "color", "TEXT NOT NULL DEFAULT '#D97757'")
             await self._ensure_column(db, "mini_app_tags", "updated_at", "TEXT")
+            await self._ensure_column(db, "mini_app_materials", "is_free", "INTEGER NOT NULL DEFAULT 0")
             await self._ensure_column(db, "mini_app_material_files", "title", "TEXT")
             await self._ensure_column(db, "mini_app_material_files", "description", "TEXT")
             await self._ensure_column(db, "mini_app_material_blocks", "description", "TEXT")

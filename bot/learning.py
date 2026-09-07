@@ -120,6 +120,8 @@ async def get_catalog(
                 preview_kind = "image" if article_image or block_image else ("video" if preview_url else None)
             material["preview_url"] = preview_url
             material["preview_kind"] = preview_kind
+            material.pop("full_description", None)
+            material.pop("telegram_url", None)
         cur = await conn.execute("SELECT * FROM mini_app_categories WHERE is_visible=1 ORDER BY sort_order, name")
         categories = [dict(row) for row in await cur.fetchall()]
         cur = await conn.execute("SELECT id,name,slug FROM mini_app_tags ORDER BY name")
@@ -130,6 +132,12 @@ async def get_catalog(
 async def get_bootstrap(db: Database, user: dict[str, Any]) -> dict[str, Any]:
     settings = await get_settings(db)
     catalog = await get_catalog(db, telegram_id=int(user["telegram_id"]))
+    has_full_access = user.get("state") == "active"
+    for material in catalog["materials"]:
+        material["locked"] = not has_full_access and not bool(material.get("is_free"))
+        if material["locked"] and not material.get("cover_url"):
+            material["preview_url"] = None
+            material["preview_kind"] = None
     async with db.connect() as conn:
         cur = await conn.execute(
             """SELECT c.*, cat.name AS category_name FROM mini_app_courses c

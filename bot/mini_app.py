@@ -109,8 +109,6 @@ class MiniApp:
             tg_user = self.init_user(request)
         except ValueError as exc:
             raise web.HTTPUnauthorized(text=str(exc)) from exc
-        if tg_user["id"] not in self.allowed_ids:
-            raise web.HTTPForbidden(text="Mini App пока доступен только пользователям из allowlist")
         await self.db.upsert_user(tg_user["id"], tg_user.get("username"),
                                   " ".join(filter(None, [tg_user.get("first_name"), tg_user.get("last_name")])) or "Telegram user")
         record = await self.db.get_user(tg_user["id"])
@@ -130,45 +128,47 @@ class MiniApp:
         _, _, user = await self.authorised(request)
         payload = await get_bootstrap(self.db, user)
         if user["state"] != "active":
-            for key in ("home", "materials", "categories", "tags", "courses", "consultation"):
-                payload[key] = [] if key != "consultation" else {}
+            payload["courses"] = []
+            payload["consultation"] = {}
         return web.json_response(payload)
 
     async def material(self, request: web.Request) -> web.Response:
         _, _, user = await self.authorised(request)
-        if user["state"] != "active":
-            raise web.HTTPForbidden(text="Active membership is required")
         try:
             material_id = int(request.match_info["material_id"])
         except ValueError:
             raise web.HTTPNotFound()
-        item = await get_material(self.db, material_id, user["telegram_id"])
+        item = await get_material(self.db, material_id)
         if not item:
             raise web.HTTPNotFound()
-        return web.json_response(item)
+        if user["state"] != "active" and not item.get("is_free"):
+            raise web.HTTPForbidden(text="Этот материал доступен участникам клуба")
+        return web.json_response(await get_material(self.db, material_id, user["telegram_id"]))
 
     async def material_complete(self, request: web.Request) -> web.Response:
         _, _, user = await self.authorised(request)
-        if user["state"] != "active":
-            raise web.HTTPForbidden(text="Active membership is required")
         try:
             material_id = int(request.match_info["material_id"])
         except ValueError:
             raise web.HTTPNotFound()
-        if not await get_material(self.db, material_id):
+        item = await get_material(self.db, material_id)
+        if not item:
             raise web.HTTPNotFound()
+        if user["state"] != "active" and not item.get("is_free"):
+            raise web.HTTPForbidden(text="Этот материал доступен участникам клуба")
         return web.json_response(await complete_material(self.db, material_id, user["telegram_id"]))
 
     async def material_like(self, request: web.Request) -> web.Response:
         _, _, user = await self.authorised(request)
-        if user["state"] != "active":
-            raise web.HTTPForbidden(text="Active membership is required")
         try:
             material_id = int(request.match_info["material_id"])
         except ValueError:
             raise web.HTTPNotFound()
-        if not await get_material(self.db, material_id):
+        item = await get_material(self.db, material_id)
+        if not item:
             raise web.HTTPNotFound()
+        if user["state"] != "active" and not item.get("is_free"):
+            raise web.HTTPForbidden(text="Этот материал доступен участникам клуба")
         return web.json_response(await toggle_material_like(self.db, material_id, user["telegram_id"]))
 
     async def course(self, request: web.Request) -> web.Response:
