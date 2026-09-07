@@ -72,10 +72,10 @@ class MiniApp:
         app.router.add_post("/mini-app/api/lesson/{lesson_id}/complete", self.lesson_complete)
 
     async def index(self, request: web.Request) -> web.StreamResponse:
-        return web.FileResponse(MINI_APP_DIR / "index.html")
+        return web.FileResponse(MINI_APP_DIR / "index.html", headers={"Cache-Control": "no-store"})
 
     async def preview(self, request: web.Request) -> web.StreamResponse:
-        return web.FileResponse(MINI_APP_DIR / "index.html")
+        return web.FileResponse(MINI_APP_DIR / "index.html", headers={"Cache-Control": "no-store"})
 
     async def media(self, request: web.Request) -> web.StreamResponse:
         filename = Path(request.match_info["filename"]).name
@@ -89,7 +89,7 @@ class MiniApp:
         target = (MINI_APP_DIR / "static" / filename).resolve()
         if MINI_APP_DIR.joinpath("static").resolve() not in target.parents or not target.is_file():
             raise web.HTTPNotFound()
-        return web.FileResponse(target)
+        return web.FileResponse(target, headers={"Cache-Control": "no-cache"})
 
     def init_user(self, request: web.Request) -> dict:
         raw = request.headers.get("X-Telegram-Init-Data", "") or request.query.get("initData", "")
