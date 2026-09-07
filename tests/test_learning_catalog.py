@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from bot.database import Database
-from bot.learning import get_catalog
+from bot.learning import complete_material, get_catalog, get_material, toggle_material_like
 
 
 class LearningCatalogCardTests(unittest.TestCase):
@@ -74,6 +74,43 @@ class LearningCatalogCardTests(unittest.TestCase):
                 material = (await get_catalog(database))["materials"][0]
                 self.assertEqual(material["preview_url"], "/mini-app/media/lesson.mp4")
                 self.assertEqual(material["preview_kind"], "video")
+
+        asyncio.run(check())
+
+    def test_views_completion_and_likes_are_unique_per_user(self):
+        async def check():
+            with tempfile.TemporaryDirectory() as directory:
+                database_path = Path(directory) / "mini.db"
+                database = Database(database_path)
+                await database.init()
+                await database.upsert_user(42, "reader", "Reader")
+                stamp = datetime.utcnow().isoformat(timespec="seconds")
+                async with database.connect() as conn:
+                    cursor = await conn.execute(
+                        """INSERT INTO mini_app_materials(
+                               title,status,sort_order,created_at,updated_at
+                           ) VALUES(?,'published',0,?,?)""",
+                        ("Статья", stamp, stamp),
+                    )
+                    material_id = cursor.lastrowid
+                    await conn.commit()
+
+                opened = await get_material(database, material_id, 42)
+                self.assertEqual(opened["view_count"], 1)
+                self.assertFalse(opened["viewed"])
+                self.assertEqual((await get_material(database, material_id, 42))["view_count"], 1)
+
+                completed = await complete_material(database, material_id, 42)
+                self.assertTrue(completed["viewed"])
+                catalog_item = (await get_catalog(database, telegram_id=42))["materials"][0]
+                self.assertTrue(catalog_item["viewed"])
+
+                liked = await toggle_material_like(database, material_id, 42)
+                self.assertTrue(liked["liked"])
+                self.assertEqual(liked["like_count"], 1)
+                unliked = await toggle_material_like(database, material_id, 42)
+                self.assertFalse(unliked["liked"])
+                self.assertEqual(unliked["like_count"], 0)
 
         asyncio.run(check())
 

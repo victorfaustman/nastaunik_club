@@ -11,7 +11,14 @@ from urllib.parse import parse_qsl
 from aiohttp import web
 
 from bot.database import Database
-from bot.learning import complete_lesson, get_bootstrap, get_course, get_material
+from bot.learning import (
+    complete_lesson,
+    complete_material,
+    get_bootstrap,
+    get_course,
+    get_material,
+    toggle_material_like,
+)
 
 logger = logging.getLogger(__name__)
 MINI_APP_DIR = Path(__file__).resolve().parent.parent / "mini_app"
@@ -68,6 +75,8 @@ class MiniApp:
         app.router.add_get("/mini-app/static/{filename:.*}", self.static)
         app.router.add_get("/mini-app/api/bootstrap", self.bootstrap)
         app.router.add_get("/mini-app/api/material/{material_id}", self.material)
+        app.router.add_post("/mini-app/api/material/{material_id}/complete", self.material_complete)
+        app.router.add_post("/mini-app/api/material/{material_id}/like", self.material_like)
         app.router.add_get("/mini-app/api/course/{course_id}", self.course)
         app.router.add_post("/mini-app/api/lesson/{lesson_id}/complete", self.lesson_complete)
 
@@ -133,10 +142,34 @@ class MiniApp:
             material_id = int(request.match_info["material_id"])
         except ValueError:
             raise web.HTTPNotFound()
-        item = await get_material(self.db, material_id)
+        item = await get_material(self.db, material_id, user["telegram_id"])
         if not item:
             raise web.HTTPNotFound()
         return web.json_response(item)
+
+    async def material_complete(self, request: web.Request) -> web.Response:
+        _, _, user = await self.authorised(request)
+        if user["state"] != "active":
+            raise web.HTTPForbidden(text="Active membership is required")
+        try:
+            material_id = int(request.match_info["material_id"])
+        except ValueError:
+            raise web.HTTPNotFound()
+        if not await get_material(self.db, material_id):
+            raise web.HTTPNotFound()
+        return web.json_response(await complete_material(self.db, material_id, user["telegram_id"]))
+
+    async def material_like(self, request: web.Request) -> web.Response:
+        _, _, user = await self.authorised(request)
+        if user["state"] != "active":
+            raise web.HTTPForbidden(text="Active membership is required")
+        try:
+            material_id = int(request.match_info["material_id"])
+        except ValueError:
+            raise web.HTTPNotFound()
+        if not await get_material(self.db, material_id):
+            raise web.HTTPNotFound()
+        return web.json_response(await toggle_material_like(self.db, material_id, user["telegram_id"]))
 
     async def course(self, request: web.Request) -> web.Response:
         _, _, user = await self.authorised(request)

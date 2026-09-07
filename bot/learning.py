@@ -60,17 +60,24 @@ async def set_settings(db: Database, values: dict[str, str]) -> None:
         await conn.commit()
 
 
-async def get_catalog(db: Database, *, category_id: int | None = None, query: str = "") -> dict[str, list[dict[str, Any]]]:
+async def get_catalog(
+    db: Database, *, telegram_id: int | None = None, category_id: int | None = None, query: str = ""
+) -> dict[str, list[dict[str, Any]]]:
     async with db.connect() as conn:
         category_sql = " AND m.category_id = ?" if category_id else ""
         query_sql = " AND (m.title LIKE ? OR m.short_description LIKE ?)" if query else ""
-        params: list[Any] = []
+        params: list[Any] = [telegram_id or 0, telegram_id or 0]
         if category_id:
             params.append(category_id)
         if query:
             params.extend([f"%{query}%", f"%{query}%"])
         cur = await conn.execute(
-            f"""SELECT m.*, c.name AS category_name FROM mini_app_materials m
+            f"""SELECT m.*, c.name AS category_name,
+                       (SELECT COUNT(*) FROM mini_app_material_views mv WHERE mv.material_id=m.id) AS view_count,
+                       (SELECT COUNT(*) FROM mini_app_material_likes ml WHERE ml.material_id=m.id) AS like_count,
+                       EXISTS(SELECT 1 FROM mini_app_material_views uv WHERE uv.material_id=m.id AND uv.telegram_id=? AND uv.completed_at IS NOT NULL) AS viewed,
+                       EXISTS(SELECT 1 FROM mini_app_material_likes ul WHERE ul.material_id=m.id AND ul.telegram_id=?) AS liked
+                FROM mini_app_materials m
                 LEFT JOIN mini_app_categories c ON c.id=m.category_id
                 WHERE m.status='published'{category_sql}{query_sql}
                 ORDER BY m.sort_order, m.created_at DESC""",
@@ -122,7 +129,7 @@ async def get_catalog(db: Database, *, category_id: int | None = None, query: st
 
 async def get_bootstrap(db: Database, user: dict[str, Any]) -> dict[str, Any]:
     settings = await get_settings(db)
-    catalog = await get_catalog(db)
+    catalog = await get_catalog(db, telegram_id=int(user["telegram_id"]))
     async with db.connect() as conn:
         cur = await conn.execute(
             """SELECT c.*, cat.name AS category_name FROM mini_app_courses c
@@ -143,7 +150,7 @@ async def get_bootstrap(db: Database, user: dict[str, Any]) -> dict[str, Any]:
             "consultation": consultation}
 
 
-async def get_material(db: Database, material_id: int) -> dict[str, Any] | None:
+async def get_material(db: Database, material_id: int, telegram_id: int | None = None) -> dict[str, Any] | None:
     async with db.connect() as conn:
         cur = await conn.execute(
             """SELECT m.*, c.name AS category_name FROM mini_app_materials m
@@ -154,6 +161,32 @@ async def get_material(db: Database, material_id: int) -> dict[str, Any] | None:
         if not row:
             return None
         result = dict(row)
+        if telegram_id:
+            await conn.execute(
+                """INSERT INTO mini_app_material_views(telegram_id,material_id,first_viewed_at)
+                   VALUES(?,?,?) ON CONFLICT(telegram_id,material_id) DO NOTHING""",
+                (telegram_id, material_id, now_iso()),
+            )
+            await conn.commit()
+        cur = await conn.execute("SELECT COUNT(*) FROM mini_app_material_views WHERE material_id=?", (material_id,))
+        result["view_count"] = (await cur.fetchone())[0]
+        cur = await conn.execute("SELECT COUNT(*) FROM mini_app_material_likes WHERE material_id=?", (material_id,))
+        result["like_count"] = (await cur.fetchone())[0]
+        if telegram_id:
+            cur = await conn.execute(
+                "SELECT completed_at FROM mini_app_material_views WHERE material_id=? AND telegram_id=?",
+                (material_id, telegram_id),
+            )
+            view = await cur.fetchone()
+            result["viewed"] = bool(view and view["completed_at"])
+            cur = await conn.execute(
+                "SELECT 1 FROM mini_app_material_likes WHERE material_id=? AND telegram_id=?",
+                (material_id, telegram_id),
+            )
+            result["liked"] = bool(await cur.fetchone())
+        else:
+            result["viewed"] = False
+            result["liked"] = False
         cur = await conn.execute(
             "SELECT id, file_name, stored_name, mime_type, file_size, title, description, sort_order FROM mini_app_material_files WHERE material_id=? ORDER BY sort_order, id",
             (material_id,),
@@ -170,6 +203,43 @@ async def get_material(db: Database, material_id: int) -> dict[str, Any] | None:
         )
         result["tags"] = [dict(tag) for tag in await cur.fetchall()]
         return result
+
+
+async def complete_material(db: Database, material_id: int, telegram_id: int) -> dict[str, Any]:
+    stamp = now_iso()
+    async with db.connect() as conn:
+        await conn.execute(
+            """INSERT INTO mini_app_material_views(telegram_id,material_id,first_viewed_at,completed_at)
+               VALUES(?,?,?,?)
+               ON CONFLICT(telegram_id,material_id) DO UPDATE SET
+                   completed_at=COALESCE(mini_app_material_views.completed_at,excluded.completed_at)""",
+            (telegram_id, material_id, stamp, stamp),
+        )
+        await conn.commit()
+        cur = await conn.execute("SELECT COUNT(*) FROM mini_app_material_views WHERE material_id=?", (material_id,))
+        return {"ok": True, "viewed": True, "view_count": (await cur.fetchone())[0]}
+
+
+async def toggle_material_like(db: Database, material_id: int, telegram_id: int) -> dict[str, Any]:
+    async with db.connect() as conn:
+        cur = await conn.execute(
+            "SELECT 1 FROM mini_app_material_likes WHERE material_id=? AND telegram_id=?",
+            (material_id, telegram_id),
+        )
+        liked = bool(await cur.fetchone())
+        if liked:
+            await conn.execute(
+                "DELETE FROM mini_app_material_likes WHERE material_id=? AND telegram_id=?",
+                (material_id, telegram_id),
+            )
+        else:
+            await conn.execute(
+                "INSERT INTO mini_app_material_likes(telegram_id,material_id,created_at) VALUES(?,?,?)",
+                (telegram_id, material_id, now_iso()),
+            )
+        await conn.commit()
+        cur = await conn.execute("SELECT COUNT(*) FROM mini_app_material_likes WHERE material_id=?", (material_id,))
+        return {"ok": True, "liked": not liked, "like_count": (await cur.fetchone())[0]}
 
 
 async def get_course(db: Database, course_id: int, telegram_id: int) -> dict[str, Any] | None:

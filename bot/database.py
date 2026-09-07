@@ -334,6 +334,31 @@ class Database:
                     FOREIGN KEY (material_id) REFERENCES mini_app_materials(id) ON DELETE CASCADE
                 );
 
+                CREATE TABLE IF NOT EXISTS mini_app_material_views (
+                    telegram_id INTEGER NOT NULL,
+                    material_id INTEGER NOT NULL,
+                    first_viewed_at TEXT NOT NULL,
+                    completed_at TEXT,
+                    PRIMARY KEY (telegram_id, material_id),
+                    FOREIGN KEY (telegram_id) REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    FOREIGN KEY (material_id) REFERENCES mini_app_materials(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_mini_app_material_views_material
+                    ON mini_app_material_views(material_id, completed_at);
+
+                CREATE TABLE IF NOT EXISTS mini_app_material_likes (
+                    telegram_id INTEGER NOT NULL,
+                    material_id INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (telegram_id, material_id),
+                    FOREIGN KEY (telegram_id) REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    FOREIGN KEY (material_id) REFERENCES mini_app_materials(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_mini_app_material_likes_material
+                    ON mini_app_material_likes(material_id);
+
                 CREATE TABLE IF NOT EXISTS mini_app_material_files (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     material_id INTEGER NOT NULL,
