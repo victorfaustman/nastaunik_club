@@ -72,6 +72,24 @@ document.addEventListener('DOMContentLoaded', () => {
   new MutationObserver(installButtons).observe(editor, { childList: true, subtree: true });
 
   const form = document.getElementById('article-form');
+  const removeCover = document.getElementById('remove-cover');
+  const removeCoverButton = document.getElementById('remove-cover-button');
+  const coverCurrent = document.getElementById('cover-current');
+  const coverInput = document.getElementById('cover-input');
+  const coverLabel = document.getElementById('cover-label');
+  removeCoverButton?.addEventListener('click', () => {
+    removeCover.value = '1';
+    coverInput.value = '';
+    coverCurrent.hidden = true;
+    coverLabel.textContent = '＋ Загрузить другую обложку';
+    document.getElementById('save-state').textContent = 'Обложка будет удалена после сохранения';
+  });
+  coverInput?.addEventListener('change', () => {
+    if (!coverInput.files[0]) return;
+    removeCover.value = '0';
+    coverCurrent.hidden = false;
+  });
+
   const materialId = form?.dataset.id;
   if (!form || !materialId) return;
 

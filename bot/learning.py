@@ -1,9 +1,43 @@
 from __future__ import annotations
 
 from datetime import datetime
+from html.parser import HTMLParser
 from typing import Any
 
 from bot.database import Database
+
+
+class MaterialPreviewParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.first_image: str | None = None
+        self.first_video: str | None = None
+        self._inside_video = False
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        values = dict(attrs)
+        src = values.get("src")
+        if tag == "img" and src and not self.first_image:
+            self.first_image = src
+        elif tag == "video":
+            self._inside_video = True
+            if src and not self.first_video:
+                self.first_video = src
+        elif tag == "source" and self._inside_video and src and not self.first_video:
+            self.first_video = src
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "video":
+            self._inside_video = False
+
+
+def article_preview(full_description: object) -> tuple[str | None, str | None]:
+    parser = MaterialPreviewParser()
+    try:
+        parser.feed(str(full_description or ""))
+    except (TypeError, ValueError):
+        return None, None
+    return parser.first_image, parser.first_video
 
 
 def now_iso() -> str:
@@ -43,6 +77,42 @@ async def get_catalog(db: Database, *, category_id: int | None = None, query: st
             params,
         )
         materials = [dict(row) for row in await cur.fetchall()]
+        material_ids = [material["id"] for material in materials]
+        tags_by_material: dict[int, list[dict[str, Any]]] = {material_id: [] for material_id in material_ids}
+        blocks_by_material: dict[int, list[dict[str, Any]]] = {material_id: [] for material_id in material_ids}
+        if material_ids:
+            placeholders = ",".join("?" for _ in material_ids)
+            cur = await conn.execute(
+                f"""SELECT mt.material_id,t.id,t.name,t.slug FROM mini_app_material_tags mt
+                    JOIN mini_app_tags t ON t.id=mt.tag_id
+                    WHERE mt.material_id IN ({placeholders}) ORDER BY t.name""",
+                material_ids,
+            )
+            for row in await cur.fetchall():
+                tags_by_material[row["material_id"]].append({
+                    "id": row["id"], "name": row["name"], "slug": row["slug"]
+                })
+            cur = await conn.execute(
+                f"""SELECT material_id,block_type,content FROM mini_app_material_blocks
+                    WHERE material_id IN ({placeholders}) AND block_type IN ('image','video')
+                    ORDER BY material_id,sort_order,id""",
+                material_ids,
+            )
+            for row in await cur.fetchall():
+                blocks_by_material[row["material_id"]].append(dict(row))
+        for material in materials:
+            material["tags"] = tags_by_material[material["id"]]
+            preview_url = material.get("cover_url")
+            preview_kind = "image" if preview_url else None
+            if not preview_url:
+                article_image, article_video = article_preview(material.get("full_description"))
+                blocks = blocks_by_material[material["id"]]
+                block_image = next((block["content"] for block in blocks if block["block_type"] == "image" and block["content"]), None)
+                block_video = next((block["content"] for block in blocks if block["block_type"] == "video" and block["content"]), None)
+                preview_url = article_image or block_image or article_video or block_video
+                preview_kind = "image" if article_image or block_image else ("video" if preview_url else None)
+            material["preview_url"] = preview_url
+            material["preview_kind"] = preview_kind
         cur = await conn.execute("SELECT * FROM mini_app_categories WHERE is_visible=1 ORDER BY sort_order, name")
         categories = [dict(row) for row in await cur.fetchall()]
         return {"materials": materials, "categories": categories}
