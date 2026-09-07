@@ -51,7 +51,7 @@ window.toggleMaterialLike=async id=>{
     button.querySelector('b').textContent=result.liked?'♥':'♡';
     button.querySelector('span').textContent=result.like_count;
     updateCachedMaterial(id,{liked:result.liked,like_count:result.like_count});
-    document.getElementById('detail-like-count').textContent=result.like_count;
+    const detailCount=document.getElementById('detail-like-count');if(detailCount)detailCount.textContent=result.like_count;
   }finally{button.disabled=false}
 };
 window.openMaterial=async id=>{
