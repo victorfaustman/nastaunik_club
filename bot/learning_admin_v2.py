@@ -16,6 +16,7 @@ from pathlib import Path
 import aiosqlite
 from aiohttp import web
 
+from bot.course_admin import CourseAdmin
 from bot.database import Database
 
 logger = logging.getLogger(__name__)
@@ -99,6 +100,7 @@ class LearningAdmin:
         self.url = url_builder
         self.schema = Database(database_path)
         self.media_dir = Path(__file__).resolve().parent.parent / "media" / "mini_app"
+        self.course_admin = CourseAdmin(self)
 
     async def connect(self):
         db = await aiosqlite.connect(self.database_path, timeout=8)
@@ -134,6 +136,8 @@ class LearningAdmin:
 
     async def page(self, request: web.Request) -> web.Response:
         await self.schema.init()
+        if request.query.get("section") == "courses" or request.query.get("course") is not None or request.query.get("lesson") is not None:
+            return await self.course_admin.page(request)
         if request.query.get("analytics") == "1":
             return await self.analytics(request)
         if request.query.get("material") is not None:
@@ -230,9 +234,10 @@ class LearningAdmin:
             .actions{{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}}.status{{padding:5px 9px;border-radius:8px;background:var(--soft);font-size:12px}}
             .video-badge{{display:inline-block;margin-top:9px;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:700}}.video-badge.busy{{background:#fff1c9;color:#76510b}}.video-badge.failed{{background:#fff0ed;color:#a34d43}}
             .status.published{{background:#dcefe0;color:#28653f}}.empty{{background:var(--paper);border:1px dashed var(--line);border-radius:16px;padding:45px;text-align:center;color:var(--muted)}}
+            .admin-tabs{{display:flex;gap:7px;margin:0 0 28px;padding:5px;width:max-content;border:1px solid var(--line);border-radius:13px;background:var(--paper)}}.admin-tabs a{{padding:8px 14px;border-radius:9px;color:var(--muted);font-weight:750;text-decoration:none}}.admin-tabs a.active{{background:var(--accent);color:#fff}}
             details{{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px;margin:14px 0}}summary{{cursor:pointer;font-weight:700}}
-            @media(max-width:680px){{.top,.material{{align-items:stretch;flex-direction:column}}.actions{{justify-content:flex-start}}input[name=q]{{min-width:0;width:100%}}}}
-            </style></head><body><main><p><a href="{self.url('/')}">← Админка</a></p>
+            @media(max-width:680px){{.top,.material{{align-items:stretch;flex-direction:column}}.actions{{justify-content:flex-start}}input[name=q]{{min-width:0;width:100%}}.admin-tabs{{width:100%}}.admin-tabs a{{flex:1;text-align:center}}}}
+            </style></head><body><main>{self.course_admin.tabs("materials")}
             <div class="top"><div><h1>Материалы</h1><p>Создавайте уроки и добавляйте контент. Задания добавляются отдельно.</p></div>
             <div class="actions"><a class="button secondary" href="{self.url('/learning', analytics=1)}">Аналитика</a><a class="button" href="{self.material_url()}">+ Добавить материал</a></div></div>
             <form class="toolbar" method="get"><input name="q" value="{esc(query)}" placeholder="Найти материал">
@@ -807,6 +812,8 @@ class LearningAdmin:
         await self.schema.init()
         form = await request.post()
         action = str(form.get("action") or "")
+        if action.startswith("course_"):
+            return await self.course_admin.action(request, form)
         now = datetime.utcnow().isoformat(timespec="seconds")
         db = await self.connect()
         editor_id = None

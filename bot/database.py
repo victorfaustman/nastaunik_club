@@ -289,6 +289,53 @@ class Database:
                     FOREIGN KEY (material_id) REFERENCES mini_app_materials(id) ON DELETE CASCADE
                 );
 
+                CREATE TABLE IF NOT EXISTS mini_app_course_modules (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    course_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (course_id) REFERENCES mini_app_courses(id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS mini_app_course_units (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    course_id INTEGER NOT NULL,
+                    module_id INTEGER,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    is_required INTEGER NOT NULL DEFAULT 1,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (course_id) REFERENCES mini_app_courses(id) ON DELETE CASCADE,
+                    FOREIGN KEY (module_id) REFERENCES mini_app_course_modules(id) ON DELETE SET NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS mini_app_course_blocks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    lesson_id INTEGER NOT NULL,
+                    block_type TEXT NOT NULL,
+                    title TEXT,
+                    content TEXT,
+                    description TEXT,
+                    settings_json TEXT,
+                    stored_name TEXT,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (lesson_id) REFERENCES mini_app_course_units(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_mini_app_course_modules_course
+                    ON mini_app_course_modules(course_id, sort_order, id);
+                CREATE INDEX IF NOT EXISTS idx_mini_app_course_units_course
+                    ON mini_app_course_units(course_id, module_id, sort_order, id);
+                CREATE INDEX IF NOT EXISTS idx_mini_app_course_blocks_lesson
+                    ON mini_app_course_blocks(lesson_id, sort_order, id);
+
                 CREATE TABLE IF NOT EXISTS mini_app_home_sections (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     section_key TEXT NOT NULL UNIQUE,
@@ -442,6 +489,9 @@ class Database:
             await self._ensure_column(db, "mini_app_material_files", "description", "TEXT")
             await self._ensure_column(db, "mini_app_material_blocks", "description", "TEXT")
             await self._ensure_column(db, "mini_app_video_jobs", "poster_name", "TEXT")
+            await self._ensure_column(db, "mini_app_courses", "outcome", "TEXT")
+            await self._ensure_column(db, "mini_app_courses", "duration_label", "TEXT")
+            await self._ensure_column(db, "mini_app_courses", "is_visible", "INTEGER NOT NULL DEFAULT 0")
             await db.commit()
 
     async def _ensure_column(self, db: aiosqlite.Connection, table_name: str, column_name: str, column_definition: str) -> None:
