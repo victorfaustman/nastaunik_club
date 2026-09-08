@@ -183,6 +183,8 @@ class CourseAdminBuilderTests(unittest.TestCase):
                 self.assertIn('data-upload-label="Изображение урока"', lesson_html)
                 self.assertIn("Открыть редактор лонгрида", lesson_html)
                 self.assertIn('data-add-form="video"', lesson_html)
+                self.assertLess(lesson_html.index("Добавить в урок"), lesson_html.index('class="lesson-blocks"'))
+                self.assertLess(lesson_html.index('class="lesson-blocks"'), lesson_html.index("Открыть редактор лонгрида"))
                 self.assertIn('class="tree-delete"', lesson_html)
                 self.assertIn("Вернуться к уроку", material_html)
                 self.assertIn("Материал урока", material_html)
