@@ -79,7 +79,7 @@ async def get_catalog(
                        EXISTS(SELECT 1 FROM mini_app_material_likes ul WHERE ul.material_id=m.id AND ul.telegram_id=?) AS liked
                 FROM mini_app_materials m
                 LEFT JOIN mini_app_categories c ON c.id=m.category_id
-                WHERE m.status='published'{category_sql}{query_sql}
+                WHERE m.status='published' AND m.library_visible=1{category_sql}{query_sql}
                 ORDER BY m.sort_order, m.created_at DESC""",
             params,
         )

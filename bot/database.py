@@ -258,6 +258,7 @@ class Database:
                     category_id INTEGER,
                     format TEXT,
                     is_free INTEGER NOT NULL DEFAULT 0,
+                    library_visible INTEGER NOT NULL DEFAULT 1,
                     status TEXT NOT NULL DEFAULT 'draft',
                     sort_order INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
@@ -323,10 +324,12 @@ class Database:
                     description TEXT,
                     settings_json TEXT,
                     stored_name TEXT,
+                    material_id INTEGER,
                     sort_order INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
-                    FOREIGN KEY (lesson_id) REFERENCES mini_app_course_units(id) ON DELETE CASCADE
+                    FOREIGN KEY (lesson_id) REFERENCES mini_app_course_units(id) ON DELETE CASCADE,
+                    FOREIGN KEY (material_id) REFERENCES mini_app_materials(id) ON DELETE CASCADE
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_mini_app_course_modules_course
@@ -485,6 +488,7 @@ class Database:
             await self._ensure_column(db, "mini_app_tags", "color", "TEXT NOT NULL DEFAULT '#D97757'")
             await self._ensure_column(db, "mini_app_tags", "updated_at", "TEXT")
             await self._ensure_column(db, "mini_app_materials", "is_free", "INTEGER NOT NULL DEFAULT 0")
+            await self._ensure_column(db, "mini_app_materials", "library_visible", "INTEGER NOT NULL DEFAULT 1")
             await self._ensure_column(db, "mini_app_material_files", "title", "TEXT")
             await self._ensure_column(db, "mini_app_material_files", "description", "TEXT")
             await self._ensure_column(db, "mini_app_material_blocks", "description", "TEXT")
@@ -492,6 +496,31 @@ class Database:
             await self._ensure_column(db, "mini_app_courses", "outcome", "TEXT")
             await self._ensure_column(db, "mini_app_courses", "duration_label", "TEXT")
             await self._ensure_column(db, "mini_app_courses", "is_visible", "INTEGER NOT NULL DEFAULT 0")
+            await self._ensure_column(db, "mini_app_course_blocks", "material_id", "INTEGER")
+            legacy_longreads = await (await db.execute(
+                """SELECT b.id,b.title,b.content,b.description,b.created_at,l.title lesson_title
+                   FROM mini_app_course_blocks b
+                   JOIN mini_app_course_units l ON l.id=b.lesson_id
+                   WHERE b.block_type='longread' AND b.material_id IS NULL"""
+            )).fetchall()
+            for longread in legacy_longreads:
+                stamp = longread["created_at"] or self._now_iso()
+                cursor = await db.execute(
+                    """INSERT INTO mini_app_materials(
+                           title,short_description,full_description,is_free,library_visible,status,sort_order,created_at,updated_at
+                       ) VALUES(?,?,?,0,0,'published',0,?,?)""",
+                    (
+                        longread["title"] or longread["lesson_title"] or "Лонгрид",
+                        longread["description"],
+                        longread["content"],
+                        stamp,
+                        self._now_iso(),
+                    ),
+                )
+                await db.execute(
+                    "UPDATE mini_app_course_blocks SET material_id=? WHERE id=?",
+                    (cursor.lastrowid, longread["id"]),
+                )
             await db.commit()
 
     async def _ensure_column(self, db: aiosqlite.Connection, table_name: str, column_name: str, column_definition: str) -> None:

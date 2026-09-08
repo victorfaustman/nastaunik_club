@@ -31,6 +31,12 @@ class LearningCatalogCardTests(unittest.TestCase):
                         ),
                     )
                     material_id = cursor.lastrowid
+                    await conn.execute(
+                        """INSERT INTO mini_app_materials(
+                               title,full_description,library_visible,status,sort_order,created_at,updated_at
+                           ) VALUES(?,?,0,'published',0,?,?)""",
+                        ("Лонгрид курса", "Не показывать в библиотеке", stamp, stamp),
+                    )
                     cursor = await conn.execute(
                         "INSERT INTO mini_app_tags(name,slug,color,created_at,updated_at) VALUES(?,?,?,?,?)",
                         ("Практика", "practice", "#ff0000", stamp, stamp),
@@ -43,6 +49,7 @@ class LearningCatalogCardTests(unittest.TestCase):
 
                 catalog = await get_catalog(database)
                 material = catalog["materials"][0]
+                self.assertEqual(len(catalog["materials"]), 1)
                 self.assertEqual(material["preview_url"], "/mini-app/media/article.jpg")
                 self.assertEqual(material["preview_kind"], "image")
                 self.assertEqual(material["tags"][0]["name"], "Практика")

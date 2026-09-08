@@ -20,7 +20,7 @@ class CourseAdminBuilderTests(unittest.TestCase):
                 await Database(database_path).init()
                 admin = LearningAdmin(database_path, lambda path, **query: path)
 
-                with self.assertRaises(web.HTTPSeeOther):
+                with self.assertRaises(web.HTTPSeeOther) as longread_redirect:
                     await admin.course_admin.action(None, MultiDict([
                         ("action", "course_save"),
                         ("title", "Новый курс"),
@@ -95,6 +95,7 @@ class CourseAdminBuilderTests(unittest.TestCase):
                         ("block_type", "longread"),
                         ("content", "<script>bad()</script><p>Текст урока</p>"),
                     ]))
+                self.assertEqual(longread_redirect.exception.status, 303)
                 with self.assertRaises(web.HTTPSeeOther):
                     await admin.course_admin.action(None, MultiDict([
                         ("action", "course_block_add"),
@@ -105,25 +106,58 @@ class CourseAdminBuilderTests(unittest.TestCase):
                     ]))
                 async with Database(database_path).connect() as db:
                     rows = await (await db.execute(
-                        "SELECT block_type,content FROM mini_app_course_blocks ORDER BY sort_order"
+                        "SELECT id,block_type,content,material_id FROM mini_app_course_blocks ORDER BY sort_order"
                     )).fetchall()
+                    course_material = await (await db.execute(
+                        "SELECT * FROM mini_app_materials WHERE id=?", (rows[0]["material_id"],)
+                    )).fetchone()
                 self.assertEqual([row["block_type"] for row in rows], ["longread", "test"])
                 self.assertNotIn("script", rows[0]["content"])
+                self.assertEqual(course_material["library_visible"], 0)
+                self.assertNotIn("script", course_material["full_description"])
+                with self.assertRaises(web.HTTPSeeOther):
+                    await admin.course_admin.action(None, MultiDict([
+                        ("action", "course_module_add"),
+                        ("course_id", str(course["id"])),
+                    ]))
+                with self.assertRaises(web.HTTPSeeOther):
+                    await admin.course_admin.action(None, MultiDict([
+                        ("action", "course_lesson_add"),
+                        ("course_id", str(course["id"])),
+                    ]))
+                async with Database(database_path).connect() as db:
+                    self.assertIsNotNone(await (await db.execute(
+                        "SELECT id FROM mini_app_course_modules WHERE title='Модуль 1'"
+                    )).fetchone())
+                    self.assertIsNotNone(await (await db.execute(
+                        "SELECT id FROM mini_app_course_units WHERE title='Урок 1' AND module_id IS NULL"
+                    )).fetchone())
                 index_html = (await admin.course_admin.index(None)).text
                 course_html = (await admin.course_admin.course_editor(SimpleNamespace(query={"course": str(course["id"])}))).text
                 lesson_html = (await admin.course_admin.lesson_editor(SimpleNamespace(query={"course": str(course["id"]), "lesson": str(lesson["id"])}))).text
+                material_html = (await admin.article_editor(SimpleNamespace(query={
+                    "material": str(course_material["id"]),
+                    "course_material": "1",
+                    "return_course": str(course["id"]),
+                    "return_lesson": str(lesson["id"]),
+                    "return_block": str(rows[0]["id"]),
+                }))).text
                 empty_outline = admin.course_admin.course_outline(
                     {"id": course["id"], "title": course["title"]}, [], [], None
                 )
                 self.assertIn("Создать курс", index_html)
-                self.assertIn("Уроки без модулей", course_html)
+                self.assertNotIn("Уроки без модулей", course_html)
                 self.assertIn('class="course-outline"', course_html)
                 self.assertIn("Перетаскивайте уроки и модули", course_html)
                 self.assertIn('data-tree-kind="module"', course_html)
                 self.assertIn('tree-lesson active', lesson_html)
-                self.assertIn('class="course-toolbar"', lesson_html)
+                self.assertIn("Открыть редактор лонгрида", lesson_html)
                 self.assertIn('data-add-form="video"', lesson_html)
-                self.assertLess(empty_outline.index("Новый урок"), empty_outline.index("Без модуля"))
+                self.assertIn('class="tree-delete"', lesson_html)
+                self.assertIn("Вернуться к уроку", material_html)
+                self.assertIn("Дополнительные материалы", material_html)
+                self.assertNotIn("Без модуля", empty_outline)
+                self.assertNotIn(">Модули<", empty_outline)
                 self.assertNotIn("Модулей пока нет", empty_outline)
                 self.assertIn("Лонгрид", lesson_html)
                 self.assertIn("Тест", lesson_html)

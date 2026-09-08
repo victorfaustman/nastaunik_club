@@ -102,6 +102,20 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   const form = document.getElementById('article-form');
+  const courseReturnUrl = form?.dataset.returnUrl;
+  const courseDeleteButton = document.getElementById('delete-material');
+  if (courseReturnUrl && courseDeleteButton) {
+    courseDeleteButton.onclick = async () => {
+      if (!confirm('Удалить лонгрид без возможности восстановления?')) return;
+      const data = new FormData();
+      data.append('action', 'material_delete');
+      data.append('ajax', '1');
+      data.append('id', courseDeleteButton.dataset.id);
+      const response = await fetch(form.action, { method: 'POST', body: data });
+      if (response.ok) window.location.href = courseReturnUrl;
+      else alert('Не удалось удалить лонгрид');
+    };
+  }
   const removeCover = document.getElementById('remove-cover');
   const removeCoverButton = document.getElementById('remove-cover-button');
   const coverCurrent = document.getElementById('cover-current');
