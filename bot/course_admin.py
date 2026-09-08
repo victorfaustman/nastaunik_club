@@ -42,9 +42,75 @@ class CourseAdmin:
     def styles() -> str:
         return '''
         :root{--bg:#f7f5f2;--paper:#fff;--ink:#292421;--muted:#817873;--line:#e7e0da;--accent:#c56349;--soft:#f3ece7;--success:#2f7147}
-        *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}main{max-width:1060px;margin:auto;padding:26px 20px 80px}a{color:inherit}.admin-tabs{display:flex;gap:7px;margin:0 0 28px;padding:5px;width:max-content;border:1px solid var(--line);border-radius:13px;background:var(--paper)}.admin-tabs a{padding:8px 14px;border-radius:9px;color:var(--muted);font-weight:750;text-decoration:none}.admin-tabs a.active{background:var(--accent);color:#fff}.top,.row,.section-head,.lesson-line{display:flex;align-items:center;justify-content:space-between;gap:14px}.top{margin-bottom:22px}.top h1{margin:0;font:700 38px/1.08 Georgia,serif}.top p,.hint{color:var(--muted)}h2{margin:0 0 6px;font-size:21px}h3{margin:0;font-size:16px}.button,button{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:10px;padding:10px 15px;background:var(--accent);color:#fff;font:700 14px system-ui;cursor:pointer;text-decoration:none}.secondary{background:var(--soft);color:var(--ink)}.danger{background:#fff0ed;color:#a44439}.ghost{padding:7px 9px;background:transparent;color:var(--muted)}.panel,.course-card,.module-card,.block-card{background:var(--paper);border:1px solid var(--line);border-radius:17px;padding:20px;margin:12px 0}.course-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;align-items:center}.course-card p{margin:5px 0;color:var(--muted)}.meta{font-size:12px;color:var(--muted)}.layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px}.sticky{position:sticky;top:16px}.field{display:block;margin:15px 0;color:var(--muted);font-size:13px}input,textarea,select{width:100%;margin-top:6px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font:inherit}textarea{min-height:92px;resize:vertical}.checkbox{display:flex;gap:10px;align-items:flex-start;padding:13px;border:1px solid var(--line);border-radius:12px}.checkbox input{width:18px;height:18px;margin:2px 0}.actions,.lesson-actions,.block-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.empty{padding:30px;border:1px dashed var(--line);border-radius:14px;text-align:center;color:var(--muted)}.module-card{padding:0;overflow:hidden}.module-head{padding:17px 18px;background:var(--soft)}.module-head form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto auto;gap:8px;align-items:center}.module-head input{margin:0}.lesson-list{padding:7px 17px 13px}.lesson-line{padding:12px 0;border-bottom:1px solid var(--line)}.lesson-line:last-child{border-bottom:0}.lesson-line p{margin:3px 0 0;color:var(--muted);font-size:12px}.ungrouped{margin-bottom:18px}.add-box{padding:16px;border:1px dashed #cdbdb2;border-radius:14px;background:color-mix(in srgb,var(--soft) 55%,white)}.add-grid{display:grid;grid-template-columns:minmax(0,1fr) 220px auto;gap:9px;align-items:end}.add-grid input,.add-grid select{margin:0}.back{display:inline-block;margin-bottom:17px;color:var(--muted);text-decoration:none}.block-card{position:relative}.block-type{display:inline-flex;padding:4px 8px;border-radius:999px;background:var(--soft);color:var(--accent);font-size:11px;font-weight:800}.block-preview{margin:12px 0}.block-preview img,.block-preview video{display:block;max-width:100%;max-height:360px;border-radius:12px}.test-options{display:grid;grid-template-columns:1fr 1fr;gap:8px}.saved{margin:0 0 14px;padding:11px 14px;border-radius:11px;background:#e2f1e6;color:var(--success)}details.add-block{margin-top:14px;border:1px dashed var(--line);border-radius:15px;background:var(--paper)}details.add-block summary{padding:16px;cursor:pointer;color:var(--accent);font-weight:800}details.add-block>form{padding:0 16px 16px}.format-hint{padding:9px 11px;border-radius:9px;background:var(--soft);color:var(--muted);font-size:12px}
-        @media(max-width:760px){.layout{grid-template-columns:1fr}.sticky{position:static}.top,.course-card{align-items:stretch;grid-template-columns:1fr;flex-direction:column}.course-card{display:flex}.module-head form,.add-grid{grid-template-columns:1fr}.lesson-line{align-items:flex-start}.test-options{grid-template-columns:1fr}.top h1{font-size:32px}.admin-tabs{width:100%}.admin-tabs a{flex:1;text-align:center}}
+        *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}main{max-width:1340px;margin:auto;padding:26px 20px 80px}a{color:inherit}.admin-tabs{display:flex;gap:7px;margin:0 0 28px;padding:5px;width:max-content;border:1px solid var(--line);border-radius:13px;background:var(--paper)}.admin-tabs a{padding:8px 14px;border-radius:9px;color:var(--muted);font-weight:750;text-decoration:none}.admin-tabs a.active{background:var(--accent);color:#fff}.top,.row,.section-head,.lesson-line{display:flex;align-items:center;justify-content:space-between;gap:14px}.top{margin-bottom:22px}.top h1{margin:0;font:700 38px/1.08 Georgia,serif}.top p,.hint{color:var(--muted)}h2{margin:0 0 6px;font-size:21px}h3{margin:0;font-size:16px}.button,button{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:10px;padding:10px 15px;background:var(--accent);color:#fff;font:700 14px system-ui;cursor:pointer;text-decoration:none}.secondary{background:var(--soft);color:var(--ink)}.danger{background:#fff0ed;color:#a44439}.ghost{padding:7px 9px;background:transparent;color:var(--muted)}.panel,.course-card,.module-card,.block-card{background:var(--paper);border:1px solid var(--line);border-radius:17px;padding:20px;margin:12px 0}.course-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;align-items:center}.course-card p{margin:5px 0;color:var(--muted)}.meta{font-size:12px;color:var(--muted)}.course-workspace{display:grid;grid-template-columns:270px minmax(0,1fr);gap:18px;align-items:start}.layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px}.sticky{position:sticky;top:16px}.field{display:block;margin:15px 0;color:var(--muted);font-size:13px}input,textarea,select{width:100%;margin-top:6px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font:inherit}textarea{min-height:92px;resize:vertical}.checkbox{display:flex;gap:10px;align-items:flex-start;padding:13px;border:1px solid var(--line);border-radius:12px}.checkbox input{width:18px;height:18px;margin:2px 0}.actions,.lesson-actions,.block-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.empty{padding:30px;border:1px dashed var(--line);border-radius:14px;text-align:center;color:var(--muted)}.module-card{padding:0;overflow:hidden;scroll-margin-top:18px}.module-head{padding:17px 18px;background:var(--soft)}.module-head form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto auto;gap:8px;align-items:center}.module-head input{margin:0}.lesson-list{padding:7px 17px 13px}.lesson-line{padding:12px 0;border-bottom:1px solid var(--line)}.lesson-line:last-child{border-bottom:0}.lesson-line p{margin:3px 0 0;color:var(--muted);font-size:12px}.ungrouped{margin-bottom:18px}.add-box{padding:16px;border:1px dashed #cdbdb2;border-radius:14px;background:color-mix(in srgb,var(--soft) 55%,white)}.add-grid{display:grid;grid-template-columns:minmax(0,1fr) 220px auto;gap:9px;align-items:end}.add-grid input,.add-grid select{margin:0}.back{display:inline-block;margin-bottom:17px;color:var(--muted);text-decoration:none}.block-card{position:relative}.block-type{display:inline-flex;padding:4px 8px;border-radius:999px;background:var(--soft);color:var(--accent);font-size:11px;font-weight:800}.block-preview{margin:12px 0}.block-preview img,.block-preview video{display:block;max-width:100%;max-height:360px;border-radius:12px}.test-options{display:grid;grid-template-columns:1fr 1fr;gap:8px}.saved{margin:0 0 14px;padding:11px 14px;border-radius:11px;background:#e2f1e6;color:var(--success)}details.add-block{margin-top:14px;border:1px dashed var(--line);border-radius:15px;background:var(--paper)}details.add-block summary{padding:16px;cursor:pointer;color:var(--accent);font-weight:800}details.add-block>form{padding:0 16px 16px}.format-hint{padding:9px 11px;border-radius:9px;background:var(--soft);color:var(--muted);font-size:12px}.course-outline{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow:auto;margin:0;padding:12px;border:1px solid var(--line);border-radius:17px;background:var(--paper)}.outline-course{display:flex;gap:9px;align-items:center;padding:10px;border-radius:10px;text-decoration:none;font-weight:850}.outline-course.active,.outline-course:hover{background:var(--soft)}.outline-course span{color:var(--accent)}.outline-label{padding:13px 9px 5px;color:var(--muted);font-size:10px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.tree-module{margin-top:5px;border-radius:10px}.tree-module-title,.tree-lesson{display:flex;gap:7px;align-items:center;min-width:0;border-radius:9px;color:var(--ink);text-decoration:none}.tree-module-title{padding:8px 8px;font-size:13px;font-weight:800}.tree-lesson{margin:2px 0 2px 20px;padding:7px 8px;color:var(--muted);font-size:12px}.tree-module-title:hover,.tree-lesson:hover,.tree-lesson.active{background:var(--soft);color:var(--ink)}.tree-grip{flex:none;color:#b6a79d;cursor:grab}.tree-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tree-drop{min-height:8px;border-radius:7px}.tree-drop.drag-over,.tree-module-title.drag-over,.tree-lesson.drag-over{outline:2px solid var(--accent);background:var(--soft)}.outline-add{margin-top:11px;border-top:1px solid var(--line)}.outline-add details{border-bottom:1px solid var(--line)}.outline-add summary{padding:10px 8px;cursor:pointer;color:var(--accent);font-size:12px;font-weight:800}.outline-add form{padding:0 7px 11px}.outline-add .field{margin:8px 0}.outline-add input,.outline-add select{padding:8px;font-size:12px}.outline-add button{width:100%;padding:8px;font-size:12px}
+        @media(max-width:1000px){.course-workspace{grid-template-columns:230px minmax(0,1fr)}.layout{grid-template-columns:1fr}.sticky{position:static}}
+        @media(max-width:760px){.course-workspace{grid-template-columns:1fr}.course-outline{position:static;max-height:none}.top,.course-card{align-items:stretch;grid-template-columns:1fr;flex-direction:column}.course-card{display:flex}.module-head form,.add-grid{grid-template-columns:1fr}.lesson-line{align-items:flex-start}.test-options{grid-template-columns:1fr}.top h1{font-size:32px}.admin-tabs{width:100%}.admin-tabs a{flex:1;text-align:center}}
         '''
+
+    def course_outline(self, course, modules, lessons, active_lesson_id: int | None = None) -> str:
+        if not course or not course["id"]:
+            return '''<aside class="course-outline"><div class="outline-label">Структура курса</div><div class="hint" style="padding:10px">Сначала сохраните курс. Затем здесь появятся модули и уроки.</div></aside>'''
+
+        course_id = int(course["id"])
+        grouped = {int(module["id"]): [] for module in modules}
+        ungrouped = []
+        for lesson in lessons:
+            module_id = lesson["module_id"]
+            if module_id in grouped:
+                grouped[module_id].append(lesson)
+            else:
+                ungrouped.append(lesson)
+
+        def lesson_node(row) -> str:
+            active = " active" if int(row["id"]) == active_lesson_id else ""
+            module_id = "" if row["module_id"] is None else str(row["module_id"])
+            return f'''<a class="tree-lesson{active}" draggable="true" data-tree-kind="lesson" data-tree-id="{row["id"]}" data-tree-module="{module_id}" href="{self.lesson_url(row["id"], course_id)}"><span class="tree-grip" title="Перетащить">⋮⋮</span><span class="tree-name">{esc(row["title"])}</span></a>'''
+
+        ungrouped_html = "".join(lesson_node(row) for row in ungrouped)
+        if not ungrouped_html:
+            ungrouped_html = '<div class="tree-drop" data-tree-drop data-tree-module=""></div>'
+        modules_html = "".join(
+            f'''<div class="tree-module"><a class="tree-module-title" draggable="true" data-tree-kind="module" data-tree-id="{module["id"]}" href="{self.course_url(course_id)}#module-{module["id"]}"><span class="tree-grip" title="Перетащить">⋮⋮</span><span class="tree-name">{esc(module["title"])}</span></a><div class="tree-drop" data-tree-drop data-tree-module="{module["id"]}">{"".join(lesson_node(row) for row in grouped[int(module["id"])])}</div></div>'''
+            for module in modules
+        )
+        module_options = "".join(f'<option value="{module["id"]}">{esc(module["title"])}</option>' for module in modules)
+        return f'''<aside class="course-outline"><a class="outline-course {"active" if active_lesson_id is None else ""}" href="{self.course_url(course_id)}"><span>◆</span><span class="tree-name">{esc(course["title"])}</span></a><div class="outline-label">Без модуля</div><div class="tree-drop" data-tree-drop data-tree-module="">{ungrouped_html}</div><div class="outline-label">Модули</div>{modules_html or '<div class="hint" style="padding:7px 9px">Модулей пока нет</div>'}<div class="outline-add"><details><summary>＋ Новый урок</summary><form method="post" action="{self.action_url}"><input type="hidden" name="action" value="course_lesson_add"><input type="hidden" name="course_id" value="{course_id}"><label class="field">Название<input name="title" placeholder="Название урока" required></label><label class="field">Раздел<select name="module_id"><option value="">Без модуля</option>{module_options}</select></label><button>Создать и открыть</button></form></details><details><summary>＋ Новый модуль</summary><form method="post" action="{self.action_url}"><input type="hidden" name="action" value="course_module_add"><input type="hidden" name="course_id" value="{course_id}"><label class="field">Название<input name="title" placeholder="Название модуля" required></label><button>Добавить модуль</button></form></details></div><p class="hint" style="padding:10px 8px 0;font-size:11px">Перетаскивайте уроки и модули, чтобы изменить структуру.</p></aside>'''
+
+    def tree_script(self, course_id: int) -> str:
+        return f'''<script>(()=>{{
+        let dragged=null;
+        const actionUrl={json.dumps(self.action_url)};
+        const courseId={int(course_id)};
+        document.querySelectorAll('[data-tree-kind]').forEach(el=>{{
+          el.addEventListener('dragstart',event=>{{dragged={{kind:el.dataset.treeKind,id:el.dataset.treeId}};event.dataTransfer.effectAllowed='move';el.style.opacity='.45';}});
+          el.addEventListener('dragend',()=>{{el.style.opacity='';document.querySelectorAll('.drag-over').forEach(node=>node.classList.remove('drag-over'));}});
+        }});
+        document.querySelectorAll('[data-tree-drop],[data-tree-kind]').forEach(target=>{{
+          target.addEventListener('dragover',event=>{{if(!dragged)return;event.preventDefault();event.stopPropagation();target.classList.add('drag-over');event.dataTransfer.dropEffect='move';}});
+          target.addEventListener('dragleave',event=>{{if(!target.contains(event.relatedTarget))target.classList.remove('drag-over');}});
+          target.addEventListener('drop',async event=>{{
+            if(!dragged)return;
+            event.preventDefault();event.stopPropagation();target.classList.remove('drag-over');
+            const kind=target.dataset.treeKind||'';
+            const form=new FormData();
+            form.set('action','course_tree_move');form.set('ajax','1');form.set('course_id',courseId);
+            form.set('item_type',dragged.kind);form.set('item_id',dragged.id);
+            if(dragged.kind==='lesson'){{
+              const moduleId=kind==='lesson'?(target.dataset.treeModule||''):(kind==='module'?target.dataset.treeId:(target.dataset.treeModule||''));
+              form.set('target_module_id',moduleId);
+              if(kind==='lesson')form.set('before_id',target.dataset.treeId);
+            }}else if(dragged.kind==='module'&&kind==='module'){{
+              form.set('before_id',target.dataset.treeId);
+            }}else{{return;}}
+            if(form.get('before_id')===dragged.id)return;
+            try{{
+              const response=await fetch(actionUrl,{{method:'POST',body:form,credentials:'same-origin'}});
+              if(!response.ok)throw new Error(await response.text());
+              location.reload();
+            }}catch(error){{alert('Не удалось изменить порядок. Попробуйте ещё раз.');}}
+          }});
+        }});
+        }})();</script>'''
 
     async def page(self, request: web.Request) -> web.Response:
         if request.query.get("lesson"):
@@ -102,15 +168,14 @@ class CourseAdmin:
             ) or '<div class="hint" style="padding:12px 0">В этом разделе пока нет уроков.</div>'
 
         module_html = "".join(
-            f'''<section class="module-card"><div class="module-head"><form method="post" action="{self.action_url}"><input type="hidden" name="action" value="course_module_save"><input type="hidden" name="course_id" value="{c["id"]}"><input type="hidden" name="module_id" value="{module["id"]}"><input name="title" value="{esc(module["title"])}" aria-label="Название модуля" required><input name="description" value="{esc(module["description"] or "")}" placeholder="Краткое описание"><button class="secondary">Сохранить</button><button class="danger" name="delete" value="1" onclick="return confirm('Удалить модуль? Уроки останутся без модуля.')">Удалить</button></form></div><div class="lesson-list">{lesson_rows(grouped[module["id"]])}</div></section>'''
+            f'''<section class="module-card" id="module-{module["id"]}"><div class="module-head"><form method="post" action="{self.action_url}"><input type="hidden" name="action" value="course_module_save"><input type="hidden" name="course_id" value="{c["id"]}"><input type="hidden" name="module_id" value="{module["id"]}"><input name="title" value="{esc(module["title"])}" aria-label="Название модуля" required><input name="description" value="{esc(module["description"] or "")}" placeholder="Краткое описание"><button class="secondary">Сохранить</button><button class="danger" name="delete" value="1" onclick="return confirm('Удалить модуль? Уроки останутся без модуля.')">Удалить</button></form></div><div class="lesson-list">{lesson_rows(grouped[module["id"]])}</div></section>'''
             for module in modules
         )
-        module_options = "".join(f'<option value="{module["id"]}">{esc(module["title"])}</option>' for module in modules)
         program = '<div class="empty">Сохраните курс — после этого здесь появится конструктор программы.</div>'
         if course:
-            program = f'''<section class="ungrouped"><div class="section-head"><div><h2>Уроки без модулей</h2><div class="hint">Можно оставить курс полностью в таком формате.</div></div></div><div class="panel">{lesson_rows(ungrouped)}</div></section>{module_html}<div class="add-box"><h3>Добавить урок</h3><form class="add-grid" method="post" action="{self.action_url}"><input type="hidden" name="action" value="course_lesson_add"><input type="hidden" name="course_id" value="{c["id"]}"><label class="field">Название<input name="title" placeholder="Например: Первый шаг" required></label><label class="field">Раздел<select name="module_id"><option value="">Без модуля</option>{module_options}</select></label><button>＋ Добавить</button></form></div><details class="add-block"><summary>＋ Добавить модуль</summary><form method="post" action="{self.action_url}"><input type="hidden" name="action" value="course_module_add"><input type="hidden" name="course_id" value="{c["id"]}"><label class="field">Название модуля<input name="title" placeholder="Например: Основы" required></label><label class="field">Описание<input name="description" placeholder="Необязательно"></label><button>Добавить модуль</button></form></details>'''
+            program = f'''<section class="ungrouped"><div class="section-head"><div><h2>Уроки без модулей</h2><div class="hint">Можно оставить курс полностью в таком формате.</div></div></div><div class="panel">{lesson_rows(ungrouped)}</div></section>{module_html}'''
         return web.Response(
-            text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(c["title"] or "Новый курс")} — Nastaunik</title><style>{self.styles()}</style></head><body><main>{self.tabs("courses")}<a class="back" href="{self.courses_url()}">← Все курсы</a>{'<div class="saved">Изменения сохранены</div>' if request.query.get('saved') else ''}<div class="top"><div><h1>{esc(c["title"] or "Новый курс")}</h1><p>Модули необязательны — уроки можно добавлять сразу.</p></div></div><div class="layout"><div><section class="panel"><h2>Программа курса</h2><p class="hint">Сначала уроки, затем внутри каждого урока — видео, лонгриды и тесты.</p>{program}</section></div><aside><form class="panel sticky" method="post" action="{self.action_url}" enctype="multipart/form-data"><input type="hidden" name="action" value="course_save"><input type="hidden" name="course_id" value="{c["id"]}"><h2>О курсе</h2><label class="field">Название<input name="title" value="{esc(c["title"])}" required autofocus></label><label class="field">Краткое описание<textarea name="description">{esc(c["description"] or "")}</textarea></label><label class="field">Результат обучения<textarea name="outcome" placeholder="После курса участник сможет…">{esc(c["outcome"] or "")}</textarea></label><label class="field">Продолжительность<input name="duration_label" value="{esc(c["duration_label"] or "")}" placeholder="Например: 4 недели"></label><label class="field">Обложка 16:9<input type="file" name="cover_file" accept=".jpg,.jpeg,.png,.webp"></label>{f'<img src="{esc(c["cover_url"])}" alt="" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:11px">' if c["cover_url"] else ''}<div class="checkbox" style="opacity:.68"><input type="checkbox" disabled><span><b>Публикация в Mini App</b><br><span class="hint">Подключим после того, как утвердим внешний вид урока.</span></span></div><div class="actions" style="margin-top:15px"><button>Сохранить курс</button></div></form></aside></div></main></body></html>''',
+            text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(c["title"] or "Новый курс")} — Nastaunik</title><style>{self.styles()}</style></head><body><main>{self.tabs("courses")}<a class="back" href="{self.courses_url()}">← Все курсы</a>{'<div class="saved">Изменения сохранены</div>' if request.query.get('saved') else ''}<div class="top"><div><h1>{esc(c["title"] or "Новый курс")}</h1><p>Модули необязательны — уроки можно добавлять сразу.</p></div></div><div class="course-workspace">{self.course_outline(c, modules, lessons)}<div class="layout"><div><section class="panel"><h2>Программа курса</h2><p class="hint">Выберите урок слева, чтобы открыть его. Структуру можно менять перетаскиванием.</p>{program}</section></div><aside><form class="panel sticky" method="post" action="{self.action_url}" enctype="multipart/form-data"><input type="hidden" name="action" value="course_save"><input type="hidden" name="course_id" value="{c["id"]}"><h2>О курсе</h2><label class="field">Название<input name="title" value="{esc(c["title"])}" required autofocus></label><label class="field">Краткое описание<textarea name="description">{esc(c["description"] or "")}</textarea></label><label class="field">Результат обучения<textarea name="outcome" placeholder="После курса участник сможет…">{esc(c["outcome"] or "")}</textarea></label><label class="field">Продолжительность<input name="duration_label" value="{esc(c["duration_label"] or "")}" placeholder="Например: 4 недели"></label><label class="field">Обложка 16:9<input type="file" name="cover_file" accept=".jpg,.jpeg,.png,.webp"></label>{f'<img src="{esc(c["cover_url"])}" alt="" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:11px">' if c["cover_url"] else ''}<div class="checkbox" style="opacity:.68"><input type="checkbox" disabled><span><b>Публикация в Mini App</b><br><span class="hint">Подключим после того, как утвердим внешний вид урока.</span></span></div><div class="actions" style="margin-top:15px"><button>Сохранить курс</button></div></form></aside></div></div>{self.tree_script(c["id"]) if course else ""}</main></body></html>''',
             content_type="text/html",
         )
 
@@ -124,13 +189,14 @@ class CourseAdmin:
                 raise web.HTTPNotFound(text="Урок не найден")
             course = await (await db.execute("SELECT title FROM mini_app_courses WHERE id=?", (course_id,))).fetchone()
             modules = await self.owner.rows(db, "SELECT id,title FROM mini_app_course_modules WHERE course_id=? ORDER BY sort_order,id", (course_id,))
+            lessons = await self.owner.rows(db, "SELECT * FROM mini_app_course_units WHERE course_id=? ORDER BY sort_order,id", (course_id,))
             blocks = await self.owner.rows(db, "SELECT * FROM mini_app_course_blocks WHERE lesson_id=? ORDER BY sort_order,id", (lesson_id,))
         finally:
             await db.close()
         module_options = '<option value="">Без модуля</option>' + "".join(f'<option value="{row["id"]}" {"selected" if row["id"] == lesson["module_id"] else ""}>{esc(row["title"])}</option>' for row in modules)
         block_html = "".join(self.block_card(block, lesson_id, course_id) for block in blocks) or '<div class="empty">В уроке пока нет блоков. Добавьте первый ниже.</div>'
         return web.Response(
-            text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(lesson["title"])} — Nastaunik</title><style>{self.styles()}</style></head><body><main>{self.tabs("courses")}<a class="back" href="{self.course_url(course_id)}">← {esc(course["title"] if course else "Курс")}</a>{'<div class="saved">Изменения сохранены</div>' if request.query.get('saved') else ''}<div class="top"><div><h1>{esc(lesson["title"])}</h1><p>Соберите урок из блоков в нужном порядке.</p></div></div><div class="layout"><div><section><div class="section-head"><div><h2>Содержание урока</h2><div class="hint">Видео, текст, изображения и тесты можно сочетать.</div></div></div>{block_html}{self.add_block_form(lesson_id, course_id)}</section></div><aside><form class="panel sticky" method="post" action="{self.action_url}"><input type="hidden" name="action" value="course_lesson_save"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><h2>Настройки урока</h2><label class="field">Название<input name="title" value="{esc(lesson["title"])}" required></label><label class="field">Краткое описание<textarea name="description">{esc(lesson["description"] or "")}</textarea></label><label class="field">Раздел<select name="module_id">{module_options}</select></label><label class="checkbox"><input type="checkbox" name="is_required" value="1" {"checked" if lesson["is_required"] else ""}><span><b>Обязательный урок</b><br><span class="hint">Учитывается в прогрессе курса.</span></span></label><button style="margin-top:15px">Сохранить урок</button></form></aside></div></main></body></html>''',
+            text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(lesson["title"])} — Nastaunik</title><style>{self.styles()}</style></head><body><main>{self.tabs("courses")}<a class="back" href="{self.course_url(course_id)}">← {esc(course["title"] if course else "Курс")}</a>{'<div class="saved">Изменения сохранены</div>' if request.query.get('saved') else ''}<div class="top"><div><h1>{esc(lesson["title"])}</h1><p>Соберите урок из блоков в нужном порядке.</p></div></div><div class="course-workspace">{self.course_outline({"id": course_id, "title": course["title"] if course else "Курс"}, modules, lessons, lesson_id)}<div class="layout"><div><section><div class="section-head"><div><h2>Содержание урока</h2><div class="hint">Видео, текст, изображения и тесты можно сочетать.</div></div></div>{block_html}{self.add_block_form(lesson_id, course_id)}</section></div><aside><form class="panel sticky" method="post" action="{self.action_url}"><input type="hidden" name="action" value="course_lesson_save"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><h2>Настройки урока</h2><label class="field">Название<input name="title" value="{esc(lesson["title"])}" required></label><label class="field">Краткое описание<textarea name="description">{esc(lesson["description"] or "")}</textarea></label><label class="field">Раздел<select name="module_id">{module_options}</select></label><label class="checkbox"><input type="checkbox" name="is_required" value="1" {"checked" if lesson["is_required"] else ""}><span><b>Обязательный урок</b><br><span class="hint">Учитывается в прогрессе курса.</span></span></label><button style="margin-top:15px">Сохранить урок</button></form></aside></div></div>{self.tree_script(course_id)}</main></body></html>''',
             content_type="text/html",
         )
 
@@ -248,6 +314,72 @@ class CourseAdmin:
                 await db.execute("UPDATE mini_app_course_units SET title=?,description=?,module_id=?,is_required=?,updated_at=? WHERE id=? AND course_id=?", (str(form.get("title") or "").strip(), str(form.get("description") or "").strip() or None, module_id, 1 if form.get("is_required") == "1" else 0, now, lesson_id, course_id))
             elif action == "course_lesson_delete":
                 await db.execute("DELETE FROM mini_app_course_units WHERE id=? AND course_id=?", (lesson_id, course_id))
+            elif action == "course_tree_move":
+                item_type = str(form.get("item_type") or "")
+                item_id = int(form.get("item_id") or 0)
+                before_id = int(form.get("before_id") or 0)
+                if not course_id or not item_id or item_type not in {"lesson", "module"}:
+                    raise web.HTTPBadRequest(text="Не удалось определить перемещаемый элемент")
+                if item_type == "lesson":
+                    item = await (await db.execute(
+                        "SELECT module_id FROM mini_app_course_units WHERE id=? AND course_id=?",
+                        (item_id, course_id),
+                    )).fetchone()
+                    if not item:
+                        raise web.HTTPNotFound(text="Урок не найден")
+                    old_module_id = item["module_id"]
+                    target_module_id = int(form.get("target_module_id") or 0) or None
+                    if target_module_id:
+                        target_module = await (await db.execute(
+                            "SELECT id FROM mini_app_course_modules WHERE id=? AND course_id=?",
+                            (target_module_id, course_id),
+                        )).fetchone()
+                        if not target_module:
+                            raise web.HTTPBadRequest(text="Модуль не найден")
+                    target_rows = await self.owner.rows(
+                        db,
+                        "SELECT id FROM mini_app_course_units WHERE course_id=? AND module_id IS ? AND id<>? ORDER BY sort_order,id",
+                        (course_id, target_module_id, item_id),
+                    )
+                    target_ids = [int(row["id"]) for row in target_rows]
+                    insert_at = target_ids.index(before_id) if before_id in target_ids else len(target_ids)
+                    target_ids.insert(insert_at, item_id)
+                    for order, target_id in enumerate(target_ids):
+                        await db.execute(
+                            "UPDATE mini_app_course_units SET module_id=?,sort_order=?,updated_at=? WHERE id=? AND course_id=?",
+                            (target_module_id, order, now, target_id, course_id),
+                        )
+                    if old_module_id != target_module_id:
+                        old_rows = await self.owner.rows(
+                            db,
+                            "SELECT id FROM mini_app_course_units WHERE course_id=? AND module_id IS ? ORDER BY sort_order,id",
+                            (course_id, old_module_id),
+                        )
+                        for order, row in enumerate(old_rows):
+                            await db.execute(
+                                "UPDATE mini_app_course_units SET sort_order=? WHERE id=? AND course_id=?",
+                                (order, row["id"], course_id),
+                            )
+                else:
+                    item = await (await db.execute(
+                        "SELECT id FROM mini_app_course_modules WHERE id=? AND course_id=?",
+                        (item_id, course_id),
+                    )).fetchone()
+                    if not item:
+                        raise web.HTTPNotFound(text="Модуль не найден")
+                    module_rows = await self.owner.rows(
+                        db,
+                        "SELECT id FROM mini_app_course_modules WHERE course_id=? AND id<>? ORDER BY sort_order,id",
+                        (course_id, item_id),
+                    )
+                    module_ids = [int(row["id"]) for row in module_rows]
+                    insert_at = module_ids.index(before_id) if before_id in module_ids else len(module_ids)
+                    module_ids.insert(insert_at, item_id)
+                    for order, module_id in enumerate(module_ids):
+                        await db.execute(
+                            "UPDATE mini_app_course_modules SET sort_order=?,updated_at=? WHERE id=? AND course_id=?",
+                            (order, now, module_id, course_id),
+                        )
             elif action in {"course_block_add", "course_block_save"}:
                 block_id = int(form.get("block_id") or 0)
                 block_type = str(form.get("block_type") or "")
@@ -290,6 +422,8 @@ class CourseAdmin:
             await db.close()
         if action == "course_delete":
             raise web.HTTPSeeOther(location=self.courses_url())
+        if action == "course_tree_move" and form.get("ajax") == "1":
+            return web.json_response({"ok": True})
         if action == "course_lesson_add" or action.startswith("course_block_") or action == "course_lesson_save":
             raise web.HTTPSeeOther(location=self.lesson_url(lesson_id, course_id, saved=1))
         raise web.HTTPSeeOther(location=self.course_url(course_id, saved=1))

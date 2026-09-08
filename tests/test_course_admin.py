@@ -52,6 +52,32 @@ class CourseAdminBuilderTests(unittest.TestCase):
 
                 with self.assertRaises(web.HTTPSeeOther):
                     await admin.course_admin.action(None, MultiDict([
+                        ("action", "course_module_add"),
+                        ("course_id", str(course["id"])),
+                        ("title", "Практика"),
+                    ]))
+                async with Database(database_path).connect() as db:
+                    second_module = await (await db.execute(
+                        "SELECT * FROM mini_app_course_modules WHERE title='Практика'"
+                    )).fetchone()
+
+                move_response = await admin.course_admin.action(None, MultiDict([
+                    ("action", "course_tree_move"),
+                    ("ajax", "1"),
+                    ("course_id", str(course["id"])),
+                    ("item_type", "lesson"),
+                    ("item_id", str(lesson["id"])),
+                    ("target_module_id", str(second_module["id"])),
+                ]))
+                self.assertEqual(move_response.status, 200)
+                async with Database(database_path).connect() as db:
+                    moved_lesson = await (await db.execute(
+                        "SELECT * FROM mini_app_course_units WHERE id=?", (lesson["id"],)
+                    )).fetchone()
+                self.assertEqual(moved_lesson["module_id"], second_module["id"])
+
+                with self.assertRaises(web.HTTPSeeOther):
+                    await admin.course_admin.action(None, MultiDict([
                         ("action", "course_block_add"),
                         ("course_id", str(course["id"])),
                         ("lesson_id", str(lesson["id"])),
@@ -77,6 +103,10 @@ class CourseAdminBuilderTests(unittest.TestCase):
                 lesson_html = (await admin.course_admin.lesson_editor(SimpleNamespace(query={"course": str(course["id"]), "lesson": str(lesson["id"])}))).text
                 self.assertIn("Создать курс", index_html)
                 self.assertIn("Уроки без модулей", course_html)
+                self.assertIn('class="course-outline"', course_html)
+                self.assertIn("Перетаскивайте уроки и модули", course_html)
+                self.assertIn('data-tree-kind="module"', course_html)
+                self.assertIn('tree-lesson active', lesson_html)
                 self.assertIn("Лонгрид", lesson_html)
                 self.assertIn("Тест", lesson_html)
 
