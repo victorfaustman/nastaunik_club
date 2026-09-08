@@ -155,7 +155,8 @@ async def get_catalog(
 
 async def get_bootstrap(db: Database, user: dict[str, Any]) -> dict[str, Any]:
     settings = await get_settings(db)
-    catalog = await get_catalog(db, telegram_id=int(user["telegram_id"]))
+    catalog_telegram_id = 0 if user.get("test_mode") else int(user["telegram_id"])
+    catalog = await get_catalog(db, telegram_id=catalog_telegram_id)
     has_full_access = user.get("state") == "active"
     for material in catalog["materials"]:
         material["locked"] = not has_full_access and not bool(material.get("is_free"))

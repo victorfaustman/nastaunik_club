@@ -63,10 +63,17 @@ def access_state(record) -> str:
 
 
 class MiniApp:
-    def __init__(self, db: Database, bot_token: str, allowed_ids: set[int] | None = None):
+    def __init__(
+        self,
+        db: Database,
+        bot_token: str,
+        allowed_ids: set[int] | None = None,
+        test_mode_ids: set[int] | None = None,
+    ):
         self.db = db
         self.bot_token = bot_token
         self.allowed_ids = allowed_ids or set()
+        self.test_mode_ids = test_mode_ids or set()
 
     def register(self, app: web.Application) -> None:
         app.router.add_get("/mini-app/", self.index)
@@ -122,6 +129,18 @@ class MiniApp:
             "amount_label": record.recurring_amount_label if record else None,
             "is_lifetime_free": bool(record.is_lifetime_free) if record else False,
         }
+        test_mode_available = int(tg_user["id"]) in self.test_mode_ids
+        test_mode = test_mode_available and request.headers.get("X-Nastaunik-Test-Mode") == "1"
+        user["test_mode_available"] = test_mode_available
+        user["test_mode"] = test_mode
+        if test_mode:
+            user.update({
+                "state": "new",
+                "status": "new",
+                "access_end_at": None,
+                "amount_label": None,
+                "is_lifetime_free": False,
+            })
         return tg_user, record, user
 
     async def bootstrap(self, request: web.Request) -> web.Response:
@@ -143,7 +162,8 @@ class MiniApp:
             raise web.HTTPNotFound()
         if user["state"] != "active" and not item.get("is_free"):
             raise web.HTTPForbidden(text="Этот материал доступен участникам клуба")
-        return web.json_response(await get_material(self.db, material_id, user["telegram_id"]))
+        tracking_id = None if user.get("test_mode") else user["telegram_id"]
+        return web.json_response(await get_material(self.db, material_id, tracking_id))
 
     async def material_complete(self, request: web.Request) -> web.Response:
         _, _, user = await self.authorised(request)
@@ -156,6 +176,8 @@ class MiniApp:
             raise web.HTTPNotFound()
         if user["state"] != "active" and not item.get("is_free"):
             raise web.HTTPForbidden(text="Этот материал доступен участникам клуба")
+        if user.get("test_mode"):
+            return web.json_response({"ok": True, "viewed": True, "view_count": item.get("view_count", 0), "test_mode": True})
         return web.json_response(await complete_material(self.db, material_id, user["telegram_id"]))
 
     async def material_like(self, request: web.Request) -> web.Response:
@@ -169,6 +191,8 @@ class MiniApp:
             raise web.HTTPNotFound()
         if user["state"] != "active" and not item.get("is_free"):
             raise web.HTTPForbidden(text="Этот материал доступен участникам клуба")
+        if user.get("test_mode"):
+            return web.json_response({"ok": True, "liked": True, "like_count": item.get("like_count", 0), "test_mode": True})
         return web.json_response(await toggle_material_like(self.db, material_id, user["telegram_id"]))
 
     async def course(self, request: web.Request) -> web.Response:

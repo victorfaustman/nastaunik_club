@@ -113,6 +113,7 @@ class WebSettings:
     public_channel_member_count: int | None
     public_channel_live_count: bool
     mini_app_allowed_ids: set[int] = field(default_factory=set)
+    mini_app_test_mode_ids: set[int] = field(default_factory=set)
 
 
 def parse_ids(value: str) -> set[int]:
@@ -162,6 +163,7 @@ def load_web_settings() -> WebSettings:
         public_channel_member_count=public_channel_member_count,
         public_channel_live_count=os.getenv("PUBLIC_CHANNEL_LIVE_COUNT", "").strip().lower() in {"1", "true", "yes"},
         mini_app_allowed_ids=parse_ids(os.getenv("MINI_APP_ALLOWED_IDS", "")) or parse_ids(os.getenv("ADMIN_IDS", "")),
+        mini_app_test_mode_ids=parse_ids(os.getenv("ADMIN_IDS", "")),
     )
 
 
@@ -247,7 +249,12 @@ class ClubAdminWebApp:
                 target = f"{target}?{urlencode(query)}"
             return target
         self.public_learning_admin = LearningAdmin(settings.database_path, public_learning_url)
-        self.mini_app = MiniApp(Database(settings.database_path), settings.bot_token, settings.mini_app_allowed_ids)
+        self.mini_app = MiniApp(
+            Database(settings.database_path),
+            settings.bot_token,
+            settings.mini_app_allowed_ids,
+            settings.mini_app_test_mode_ids,
+        )
 
     def build_app(self) -> web.Application:
         app = web.Application(middlewares=[self.auth_middleware], client_max_size=32 * 1024 * 1024)
