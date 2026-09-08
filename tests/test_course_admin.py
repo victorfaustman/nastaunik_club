@@ -33,6 +33,19 @@ class CourseAdminBuilderTests(unittest.TestCase):
 
                 with self.assertRaises(web.HTTPSeeOther):
                     await admin.course_admin.action(None, MultiDict([
+                        ("action", "course_save"),
+                        ("course_id", str(course["id"])),
+                        ("title", "Новый курс"),
+                        ("description", "Описание"),
+                        ("is_visible", "1"),
+                    ]))
+                async with Database(database_path).connect() as db:
+                    course = await (await db.execute("SELECT * FROM mini_app_courses")).fetchone()
+                self.assertEqual(course["status"], "published")
+                self.assertEqual(course["is_visible"], 1)
+
+                with self.assertRaises(web.HTTPSeeOther):
+                    await admin.course_admin.action(None, MultiDict([
                         ("action", "course_module_add"),
                         ("course_id", str(course["id"])),
                         ("title", "Основы"),
@@ -177,6 +190,13 @@ class CourseAdminBuilderTests(unittest.TestCase):
                 self.assertIn('data-tree-kind="module"', course_html)
                 self.assertIn('admin_uploads.js?v=2', course_html)
                 self.assertIn('data-upload-label="Обложка курса"', course_html)
+                self.assertNotIn("Результат обучения", course_html)
+                self.assertNotIn("Продолжительность", course_html)
+                self.assertNotIn('name="outcome"', course_html)
+                self.assertNotIn('name="duration_label"', course_html)
+                self.assertIn('name="is_visible" value="1" checked', course_html)
+                self.assertNotIn('type="checkbox" disabled', course_html)
+                self.assertIn("Опубликовать курс в Mini App", course_html)
                 self.assertIn('tree-lesson active', lesson_html)
                 self.assertIn('admin_uploads.js?v=2', lesson_html)
                 self.assertIn('data-upload-label="Видео урока"', lesson_html)
