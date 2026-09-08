@@ -8,6 +8,7 @@ from pathlib import Path
 from bot.database import Database
 from bot.learning import complete_material, get_bootstrap, get_catalog, get_material, toggle_material_like
 from bot.learning_admin_v2 import LearningAdmin, clean_rich_text
+from bot.media_embed import youtube_video_id
 
 
 class LearningCatalogCardTests(unittest.TestCase):
@@ -124,6 +125,33 @@ class LearningCatalogCardTests(unittest.TestCase):
 
         asyncio.run(check())
 
+    def test_catalog_uses_youtube_thumbnail_when_article_has_no_image(self):
+        async def check():
+            with tempfile.TemporaryDirectory() as directory:
+                database_path = Path(directory) / "mini.db"
+                database = Database(database_path)
+                await database.init()
+                stamp = datetime.utcnow().isoformat(timespec="seconds")
+                async with database.connect() as conn:
+                    await conn.execute(
+                        """INSERT INTO mini_app_materials(
+                               title,full_description,status,sort_order,created_at,updated_at
+                           ) VALUES(?,?,'published',0,?,?)""",
+                        (
+                            "YouTube",
+                            '<figure class="inline-media"><iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe></figure>',
+                            stamp,
+                            stamp,
+                        ),
+                    )
+                    await conn.commit()
+
+                material = (await get_catalog(database))["materials"][0]
+                self.assertEqual(material["preview_url"], "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg")
+                self.assertEqual(material["preview_kind"], "image")
+
+        asyncio.run(check())
+
     def test_rich_text_sanitizer_keeps_formatting_and_removes_unsafe_markup(self):
         cleaned = clean_rich_text(
             '<script>alert(1)</script><h2 style="color:red">Заголовок</h2>'
@@ -142,6 +170,23 @@ class LearningCatalogCardTests(unittest.TestCase):
             "Добавьте подпись",
             clean_rich_text('<figure><img src="/mini-app/media/a.jpg"><figcaption contenteditable="true">Добавьте подпись</figcaption></figure>'),
         )
+
+    def test_rich_text_sanitizer_keeps_only_safe_youtube_embeds(self):
+        cleaned = clean_rich_text(
+            '<iframe src="https://www.youtube.com/watch?v=dQw4w9WgXcQ" onload="bad()"></iframe>'
+            '<iframe src="https://evil.example/embed/dQw4w9WgXcQ"></iframe>'
+        )
+        self.assertIn('src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"', cleaned)
+        self.assertIn("allowfullscreen", cleaned)
+        self.assertNotIn("onload", cleaned)
+        self.assertNotIn("evil.example", cleaned)
+
+    def test_youtube_url_parser_supports_common_link_shapes(self):
+        expected = "dQw4w9WgXcQ"
+        self.assertEqual(youtube_video_id(f"https://youtu.be/{expected}?si=test"), expected)
+        self.assertEqual(youtube_video_id(f"https://www.youtube.com/watch?v={expected}&t=10"), expected)
+        self.assertEqual(youtube_video_id(f"https://youtube.com/shorts/{expected}"), expected)
+        self.assertIsNone(youtube_video_id("https://example.com/watch?v=dQw4w9WgXcQ"))
 
     def test_cleanup_only_removes_old_unreferenced_uploads(self):
         async def check():

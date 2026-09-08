@@ -4,9 +4,28 @@ const previewMode=location.pathname.endsWith('/preview')||new URLSearchParams(lo
 function initData(){return tg?.initData||''}
 async function api(path,opts={}){const headers={'X-Telegram-Init-Data':initData()};if(opts.body)headers['Content-Type']='application/json';const r=await fetch('/mini-app/api'+path,{...opts,headers});if(!r.ok)throw Error(await r.text()||'Ошибка загрузки');return r.json()}
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function youtubeVideoId(value){let raw=String(value||'').trim();if(!raw)return null;if(!/^https?:\/\//i.test(raw))raw=`https://${raw}`;try{const url=new URL(raw),host=url.hostname.toLowerCase().replace(/^www\./,''),parts=url.pathname.split('/').filter(Boolean);let id=null;if(host==='youtu.be')id=parts[0];else if(['youtube.com','m.youtube.com','music.youtube.com','youtube-nocookie.com'].includes(host)){if(url.pathname==='/watch')id=url.searchParams.get('v');else if(['embed','shorts','live'].includes(parts[0]))id=parts[1]}return /^[A-Za-z0-9_-]{11}$/.test(id||'')?id:null}catch(_){return null}}
 function fileMeta(file){const extension=String(file.file_name||file.url||'').split('?')[0].split('.').pop().toLowerCase();const labels={pdf:'PDF',doc:'DOC',docx:'DOC',ppt:'PPT',pptx:'PPT',xls:'XLS',xlsx:'XLS',txt:'TXT',md:'TXT',jpg:'IMG',jpeg:'IMG',png:'IMG',webp:'IMG',gif:'GIF',mp3:'AUDIO',mp4:'VIDEO'};const size=Number(file.file_size||0);const sizeLabel=!size?'':size<1024?`${size} Б`:size<1048576?`${Math.round(size/1024)} КБ`:`${(size/1048576).toFixed(size<10485760?1:0)} МБ`;return {type:labels[extension]||'ФАЙЛ',size:sizeLabel}}
 function attachmentCard(file){const meta=fileMeta(file);return `<a class="attachment-card" href="${esc(file.url)}" target="_blank" rel="noopener"><span class="attachment-icon">${esc(meta.type)}</span><span class="attachment-copy"><strong>${esc(file.title||file.file_name)}</strong>${file.description?`<span>${esc(file.description)}</span>`:''}<small>${esc([meta.type,meta.size].filter(Boolean).join(' · '))}</small></span><span class="attachment-download" aria-hidden="true">↓</span></a>`}
-function richHtml(value){const t=document.createElement('template');t.innerHTML=String(value??'');t.content.querySelectorAll('script,style,iframe,object,form').forEach(x=>x.remove());t.content.querySelectorAll('*').forEach(x=>[...x.attributes].forEach(a=>{if(a.name.toLowerCase().startsWith('on')||['src','href'].includes(a.name.toLowerCase())&&!/^(https?:|\/|#)/i.test(a.value))x.removeAttribute(a.name)}));t.content.querySelectorAll('figcaption').forEach(c=>{if(c.textContent.trim().toLocaleLowerCase('ru')==='добавьте подпись')c.remove()});t.content.querySelectorAll('video').forEach(v=>{v.setAttribute('preload','metadata');v.setAttribute('playsinline','')});return t.innerHTML}
+function richHtml(value){
+  const t=document.createElement('template');
+  t.innerHTML=String(value??'');
+  t.content.querySelectorAll('script,style,object,embed,form').forEach(x=>x.remove());
+  t.content.querySelectorAll('iframe').forEach(frame=>{
+    const id=youtubeVideoId(frame.getAttribute('src'));
+    if(!id){frame.remove();return}
+    [...frame.attributes].forEach(attribute=>frame.removeAttribute(attribute.name));
+    frame.src=`https://www.youtube-nocookie.com/embed/${id}`;
+    frame.title='Видео YouTube';
+    frame.loading='lazy';
+    frame.allow='accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+    frame.setAttribute('allowfullscreen','');
+  });
+  t.content.querySelectorAll('*').forEach(x=>[...x.attributes].forEach(a=>{if(a.name.toLowerCase().startsWith('on')||['src','href'].includes(a.name.toLowerCase())&&!/^(https?:|\/|#)/i.test(a.value))x.removeAttribute(a.name)}));
+  t.content.querySelectorAll('figcaption').forEach(c=>{if(c.textContent.trim().toLocaleLowerCase('ru')==='добавьте подпись')c.remove()});
+  t.content.querySelectorAll('video').forEach(v=>{v.setAttribute('preload','metadata');v.setAttribute('playsinline','')});
+  return t.innerHTML
+}
 let stopReadingProgress=()=>{};
 function shell(content){stopReadingProgress();stopReadingProgress=()=>{};document.querySelector('#app').innerHTML=`<main class="shell">${content}</main>`;window.scrollTo({top:0})}
 function nav(){return `<nav class="bottom-nav">${[['home','⌂','Главная'],['library','▤','Библиотека'],['courses','◫','Курсы'],['consultations','♡','Консультации'],['profile','○','Профиль']].map(([id,icon,label])=>`<button class="${state.tab===id?'active':''}" onclick="go('${id}')"><span>${icon}</span>${label}</button>`).join('')}</nav>`}
@@ -41,7 +60,8 @@ function beginReadingProgress(id,alreadyViewed){
   const delayed=()=>{clearTimeout(shortTimer);shortTimer=setTimeout(update,250)};
   window.addEventListener('scroll',update,{passive:true});
   window.addEventListener('resize',delayed,{passive:true});
-  document.querySelectorAll('img,video').forEach(media=>media.addEventListener('loadeddata',delayed,{once:true}));
+  document.querySelectorAll('img,iframe').forEach(media=>media.addEventListener('load',delayed,{once:true}));
+  document.querySelectorAll('video').forEach(media=>media.addEventListener('loadeddata',delayed,{once:true}));
   shortTimer=setTimeout(update,alreadyViewed?80:1200);
   stopReadingProgress=()=>{window.removeEventListener('scroll',update);window.removeEventListener('resize',delayed);clearTimeout(shortTimer)};
 }

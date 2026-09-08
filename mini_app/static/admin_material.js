@@ -41,6 +41,62 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   window.sync = cleanSync;
 
+  function youtubeVideoId(value) {
+    let raw = String(value || '').trim();
+    if (!raw) return null;
+    if (!/^https?:\/\//i.test(raw)) raw = `https://${raw}`;
+    try {
+      const url = new URL(raw);
+      const host = url.hostname.toLowerCase().replace(/^www\./, '');
+      const parts = url.pathname.split('/').filter(Boolean);
+      let id = null;
+      if (host === 'youtu.be') id = parts[0];
+      else if (['youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtube-nocookie.com'].includes(host)) {
+        if (url.pathname === '/watch') id = url.searchParams.get('v');
+        else if (['embed', 'shorts', 'live'].includes(parts[0])) id = parts[1];
+      }
+      return /^[A-Za-z0-9_-]{11}$/.test(id || '') ? id : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  let youtubeRange = null;
+  function rememberYoutubeRange() {
+    const selection = window.getSelection();
+    if (selection?.rangeCount && editor.contains(selection.anchorNode)) {
+      youtubeRange = selection.getRangeAt(0).cloneRange();
+    }
+  }
+
+  function insertYoutube(value, range = youtubeRange) {
+    const videoId = youtubeVideoId(value);
+    if (!videoId) return false;
+    const figure = document.createElement('figure');
+    figure.className = 'inline-media';
+    figure.draggable = true;
+    const iframe = document.createElement('iframe');
+    iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}`;
+    iframe.title = 'Видео YouTube';
+    iframe.loading = 'lazy';
+    iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+    iframe.setAttribute('allowfullscreen', '');
+    figure.append(iframe);
+    if (range && editor.contains(range.commonAncestorContainer)) {
+      range.deleteContents();
+      range.insertNode(figure);
+    } else {
+      editor.append(figure);
+    }
+    const paragraph = document.createElement('p');
+    paragraph.innerHTML = '<br>';
+    figure.after(paragraph);
+    addRemoveButton(figure);
+    cleanSync();
+    editor.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  }
+
   function addRemoveButton(figure) {
     figure.draggable = true;
     const caption = figure.querySelector(':scope > figcaption');
@@ -55,7 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
     button.type = 'button';
     button.className = 'media-remove';
     button.contentEditable = 'false';
-    button.title = 'Удалить изображение или видео';
+    button.title = 'Удалить медиа';
     button.setAttribute('aria-label', 'Удалить медиа');
     button.textContent = '×';
     button.addEventListener('mousedown', (event) => event.stopPropagation());
@@ -81,8 +137,24 @@ document.addEventListener('DOMContentLoaded', () => {
     cleanSync();
   });
 
+  editor.addEventListener('mouseup', rememberYoutubeRange);
+  editor.addEventListener('keyup', rememberYoutubeRange);
+  document.getElementById('insert-youtube')?.addEventListener('mousedown', rememberYoutubeRange);
+  document.getElementById('insert-youtube')?.addEventListener('click', () => {
+    const value = prompt('Вставьте ссылку на видео YouTube');
+    if (value && !insertYoutube(value)) alert('Не удалось распознать ссылку YouTube');
+  });
+
   editor.addEventListener('paste', (event) => {
     const clipboard = event.clipboardData;
+    const pastedText = clipboard?.getData('text/plain').trim();
+    if (youtubeVideoId(pastedText)) {
+      event.preventDefault();
+      const selection = window.getSelection();
+      const range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : youtubeRange;
+      insertYoutube(pastedText, range);
+      return;
+    }
     const pastedHtml = clipboard?.getData('text/html');
     if (!pastedHtml) return;
     event.preventDefault();

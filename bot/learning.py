@@ -5,6 +5,7 @@ from html.parser import HTMLParser
 from typing import Any
 
 from bot.database import Database
+from bot.media_embed import youtube_thumbnail_url, youtube_video_id
 
 
 class MaterialPreviewParser(HTMLParser):
@@ -12,6 +13,7 @@ class MaterialPreviewParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.first_image: str | None = None
         self.first_video: str | None = None
+        self.first_youtube_thumbnail: str | None = None
         self._inside_video = False
 
     def handle_starttag(self, tag: str, attrs) -> None:
@@ -25,6 +27,10 @@ class MaterialPreviewParser(HTMLParser):
                 self.first_video = src
         elif tag == "source" and self._inside_video and src and not self.first_video:
             self.first_video = src
+        elif tag == "iframe" and src and not self.first_youtube_thumbnail:
+            video_id = youtube_video_id(src)
+            if video_id:
+                self.first_youtube_thumbnail = youtube_thumbnail_url(video_id)
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "video":
@@ -37,7 +43,7 @@ def article_preview(full_description: object) -> tuple[str | None, str | None]:
         parser.feed(str(full_description or ""))
     except (TypeError, ValueError):
         return None, None
-    return parser.first_image, parser.first_video
+    return parser.first_image or parser.first_youtube_thumbnail, parser.first_video
 
 
 def now_iso() -> str:
