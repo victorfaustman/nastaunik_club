@@ -42,6 +42,9 @@ document.addEventListener('DOMContentLoaded', () => {
   window.sync = cleanSync;
 
   function addRemoveButton(figure) {
+    figure.draggable = true;
+    const caption = figure.querySelector(':scope > figcaption');
+    if (caption) caption.contentEditable = 'true';
     figure.querySelectorAll('video').forEach((video) => {
       video.preload = 'metadata';
       video.playsInline = true;
@@ -70,6 +73,32 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   installButtons();
   new MutationObserver(installButtons).observe(editor, { childList: true, subtree: true });
+
+  document.getElementById('add-divider')?.addEventListener('click', () => {
+    editor.focus();
+    document.execCommand('insertHorizontalRule');
+    cleanSync();
+  });
+
+  editor.addEventListener('paste', (event) => {
+    const clipboard = event.clipboardData;
+    const pastedHtml = clipboard?.getData('text/html');
+    if (!pastedHtml) return;
+    event.preventDefault();
+    const template = document.createElement('template');
+    template.innerHTML = pastedHtml;
+    template.content.querySelectorAll('script,style,iframe,object,embed,form,input,button,meta,link').forEach((node) => node.remove());
+    template.content.querySelectorAll('span,font').forEach((node) => node.replaceWith(...node.childNodes));
+    template.content.querySelectorAll('*').forEach((node) => {
+      [...node.attributes].forEach((attribute) => {
+        const name = attribute.name.toLowerCase();
+        if (name.startsWith('on') || ['style', 'id'].includes(name)) node.removeAttribute(attribute.name);
+        if (['href', 'src', 'poster'].includes(name) && !/^(https?:|\/|#)/i.test(attribute.value)) node.removeAttribute(attribute.name);
+      });
+    });
+    document.execCommand('insertHTML', false, template.innerHTML);
+    cleanSync();
+  });
 
   const form = document.getElementById('article-form');
   const removeCover = document.getElementById('remove-cover');

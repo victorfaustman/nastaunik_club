@@ -1,4 +1,6 @@
 import asyncio
+import shutil
+import subprocess
 import tempfile
 import unittest
 from datetime import datetime
@@ -9,6 +11,24 @@ from bot.learning_admin_v2 import LearningAdmin
 
 
 class VideoProcessingQueueTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg is not installed")
+    def test_static_video_poster_is_generated(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            video_path = root / "sample.mp4"
+            subprocess.run(
+                [
+                    shutil.which("ffmpeg"), "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+                    "-f", "lavfi", "-i", "color=c=blue:s=320x180:d=1",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", str(video_path),
+                ],
+                check=True,
+            )
+            admin = LearningAdmin(root / "mini.db", lambda path, **query: path)
+            poster_name = asyncio.run(admin.create_video_poster(video_path))
+            self.assertEqual(poster_name, "sample.poster.webp")
+            self.assertGreater((root / poster_name).stat().st_size, 0)
+
     def test_inline_video_waits_for_save_then_enters_queue(self):
         async def check():
             with tempfile.TemporaryDirectory() as directory:

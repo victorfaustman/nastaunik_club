@@ -120,8 +120,26 @@ async def get_catalog(
                 preview_kind = "image" if article_image or block_image else ("video" if preview_url else None)
             material["preview_url"] = preview_url
             material["preview_kind"] = preview_kind
+            material["preview_poster_url"] = None
             material.pop("full_description", None)
             material.pop("telegram_url", None)
+        video_names = {
+            material["id"]: str(material["preview_url"]).split("?", 1)[0].rsplit("/", 1)[-1]
+            for material in materials
+            if material["preview_kind"] == "video" and material["preview_url"]
+        }
+        if video_names:
+            names = sorted(set(video_names.values()))
+            placeholders = ",".join("?" for _ in names)
+            cur = await conn.execute(
+                f"SELECT stored_name,poster_name FROM mini_app_video_jobs WHERE stored_name IN ({placeholders}) AND poster_name IS NOT NULL",
+                names,
+            )
+            poster_by_video = {row["stored_name"]: row["poster_name"] for row in await cur.fetchall()}
+            for material in materials:
+                poster_name = poster_by_video.get(video_names.get(material["id"], ""))
+                if poster_name:
+                    material["preview_poster_url"] = f"/mini-app/media/{poster_name}"
         cur = await conn.execute("SELECT * FROM mini_app_categories WHERE is_visible=1 ORDER BY sort_order, name")
         categories = [dict(row) for row in await cur.fetchall()]
         cur = await conn.execute("SELECT id,name,slug FROM mini_app_tags ORDER BY name")
@@ -138,6 +156,7 @@ async def get_bootstrap(db: Database, user: dict[str, Any]) -> dict[str, Any]:
         if material["locked"] and not material.get("cover_url"):
             material["preview_url"] = None
             material["preview_kind"] = None
+            material["preview_poster_url"] = None
     async with db.connect() as conn:
         cur = await conn.execute(
             """SELECT c.*, cat.name AS category_name FROM mini_app_courses c

@@ -25,6 +25,10 @@ button { font: inherit; }
 .muted { color: var(--muted); }
 .button { display: inline-flex; justify-content: center; align-items: center; min-height: 48px; padding: 0 17px; border: 0; border-radius: 15px; background: var(--accent); color: #fff; text-decoration: none; font-weight: 800; cursor: pointer; }
 .button.secondary { background: #f1dfd0; color: var(--accent-dark); }
+.library-search { height: 50px; display: flex; align-items: center; gap: 10px; margin: 0 0 13px; padding: 0 15px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); box-shadow: var(--shadow); color: var(--muted); }
+.library-search span { font-size: 23px; line-height: 1; transform: rotate(-15deg); }
+.library-search input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; }
+.library-search input::placeholder { color: var(--muted); }
 .chips { display: flex; gap: 8px; overflow: auto; padding-bottom: 4px; }
 .chip { white-space: nowrap; border: 1px solid var(--line); background: var(--paper); border-radius: 99px; padding: 9px 13px; color: var(--muted); cursor: pointer; }
 .chip:hover, .chip:focus-visible, .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -41,6 +45,7 @@ button { font: inherit; }
 .material-card.locked .item-thumb img, .material-card.locked .item-thumb video { filter: grayscale(1); opacity: .42; }
 .item-thumb { position: relative; display: grid; place-items: center; width: 128px; aspect-ratio: 16/9; flex: 0 0 128px; overflow: hidden; border-radius: 14px; background: #f0dfd1; color: var(--accent); font-size: 24px; text-decoration: none; }
 .item-thumb img, .item-thumb video { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; transition: filter .2s ease, opacity .2s ease; }
+.video-placeholder { display: grid; place-items: center; width: 100%; height: 100%; background: linear-gradient(135deg,#d9b29e,#b9654e); color: #fff; font-size: 25px; }
 .material-card.viewed .item-thumb img, .material-card.viewed .item-thumb video { filter: grayscale(1); opacity: .58; }
 .material-card.viewed .empty-thumb { filter: grayscale(1); color: var(--muted); }
 .viewed-mark { position: absolute; left: 7px; bottom: 7px; max-width: calc(100% - 14px); padding: 3px 7px; overflow: hidden; border-radius: 999px; background: #3b332dcc; color: #fff; font-size: 9px; font-weight: 800; line-height: 1.25; letter-spacing: .02em; }

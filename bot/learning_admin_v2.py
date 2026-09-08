@@ -9,7 +9,8 @@ import secrets
 import shutil
 import sqlite3
 from contextlib import suppress
-from datetime import datetime
+from datetime import datetime, timedelta
+from html.parser import HTMLParser
 from pathlib import Path
 
 import aiosqlite
@@ -24,12 +25,70 @@ def esc(value: object) -> str:
     return html.escape("" if value is None else str(value), quote=True)
 
 
+class RichTextSanitizer(HTMLParser):
+    allowed_tags = {"div", "p", "br", "strong", "b", "em", "i", "u", "s", "h2", "h3", "ul", "ol", "li", "blockquote", "a", "img", "video", "source", "figure", "figcaption", "hr"}
+    void_tags = {"br", "img", "source", "hr"}
+    allowed_attributes = {
+        "a": {"href", "title"},
+        "img": {"src", "alt", "title"},
+        "video": {"src", "poster", "controls", "preload", "playsinline"},
+        "source": {"src", "type"},
+        "figure": {"class", "draggable"},
+        "figcaption": {"contenteditable"},
+    }
+    url_attributes = {"href", "src", "poster"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.output: list[str] = []
+        self.blocked_depth = 0
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        tag = tag.lower()
+        if tag in {"script", "style", "iframe", "object", "form"}:
+            self.blocked_depth += 1
+            return
+        if self.blocked_depth:
+            return
+        if tag not in self.allowed_tags:
+            return
+        safe_attrs = []
+        for name, value in attrs:
+            name = name.lower()
+            if name not in self.allowed_attributes.get(tag, set()):
+                continue
+            value = "" if value is None else str(value)
+            if name in self.url_attributes and not re.match(r"^(?:https?:|/|#)", value, re.I):
+                continue
+            if tag == "figure" and name == "class":
+                value = "inline-media" if "inline-media" in value.split() else ""
+                if not value:
+                    continue
+            safe_attrs.append(f' {name}="{html.escape(value, quote=True)}"')
+        if tag == "a":
+            safe_attrs.append(' rel="noopener noreferrer"')
+        self.output.append(f"<{tag}{''.join(safe_attrs)}>")
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in {"script", "style", "iframe", "object", "form"}:
+            self.blocked_depth = max(0, self.blocked_depth - 1)
+            return
+        if self.blocked_depth:
+            return
+        if tag in self.allowed_tags and tag not in self.void_tags:
+            self.output.append(f"</{tag}>")
+
+    def handle_data(self, data: str) -> None:
+        if not self.blocked_depth:
+            self.output.append(html.escape(data, quote=False))
+
+
 def clean_rich_text(value: object) -> str:
-    text = "" if value is None else str(value)
-    allowed = r"(?i)(?:/?(?:div|p|br|strong|b|em|i|u|s|h2|h3|ul|ol|li|blockquote|a|img|video|source|figure|figcaption)(?:\s+[^>]*)?)"
-    text = re.sub(r"<(?!"+allowed+r">)[^>]*>", "", text)
-    text = re.sub(r'(<a\b(?![^>]*\brel=)[^>]*)>', r'\1 rel="noopener noreferrer">', text, flags=re.I)
-    return text
+    sanitizer = RichTextSanitizer()
+    sanitizer.feed("" if value is None else str(value))
+    sanitizer.close()
+    return "".join(sanitizer.output)
 
 class LearningAdmin:
     """Simple, content-first admin for the learning library."""
@@ -38,6 +97,7 @@ class LearningAdmin:
         self.database_path = database_path
         self.url = url_builder
         self.schema = Database(database_path)
+        self.media_dir = Path(__file__).resolve().parent.parent / "media" / "mini_app"
 
     async def connect(self):
         db = await aiosqlite.connect(self.database_path, timeout=8)
@@ -73,9 +133,42 @@ class LearningAdmin:
 
     async def page(self, request: web.Request) -> web.Response:
         await self.schema.init()
+        if request.query.get("analytics") == "1":
+            return await self.analytics(request)
         if request.query.get("material") is not None:
             return await self.article_editor(request)
         return await self.index(request)
+
+    async def analytics(self, request: web.Request) -> web.Response:
+        db = await self.connect()
+        try:
+            cur = await db.execute(
+                """SELECT
+                       (SELECT COUNT(*) FROM mini_app_materials WHERE status='published') materials,
+                       (SELECT COUNT(*) FROM mini_app_material_views) views,
+                       (SELECT COUNT(*) FROM mini_app_material_views WHERE completed_at IS NOT NULL) completions,
+                       (SELECT COUNT(*) FROM mini_app_material_likes) likes"""
+            )
+            totals = await cur.fetchone()
+            materials = await self.rows(
+                db,
+                """SELECT m.id,m.title,m.is_free,
+                          (SELECT COUNT(*) FROM mini_app_material_views v WHERE v.material_id=m.id) views,
+                          (SELECT COUNT(*) FROM mini_app_material_views v WHERE v.material_id=m.id AND v.completed_at IS NOT NULL) completions,
+                          (SELECT COUNT(*) FROM mini_app_material_likes l WHERE l.material_id=m.id) likes
+                   FROM mini_app_materials m WHERE m.status='published'
+                   ORDER BY views DESC,likes DESC,m.updated_at DESC""",
+            )
+        finally:
+            await db.close()
+        completion_rate = round(totals["completions"] / totals["views"] * 100) if totals["views"] else 0
+        rows = "".join(
+            f'''<tr><td><a href="{self.material_url(row["id"])}">{esc(row["title"])}</a>{'<span class="free">Бесплатно</span>' if row["is_free"] else ''}</td><td>{row["views"]}</td><td>{row["completions"]}</td><td>{round(row["completions"] / row["views"] * 100) if row["views"] else 0}%</td><td>{row["likes"]}</td></tr>'''
+            for row in materials
+        ) or '<tr><td colspan="5" class="empty">Данных пока нет.</td></tr>'
+        return web.Response(text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Аналитика материалов — Nastaunik</title><style>
+        :root{{--bg:#f6f2ed;--paper:#fff;--ink:#302621;--muted:#89776d;--line:#e5d9cf;--accent:#b9654e}}*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}}main{{max-width:1040px;margin:auto;padding:28px 20px 70px}}a{{color:inherit}}h1{{font:700 38px Georgia,serif;margin:8px 0 24px}}.summary{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}}.metric{{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:18px}}.metric b{{display:block;font:700 30px Georgia,serif}}.metric span{{color:var(--muted)}}.table-wrap{{overflow:auto;background:var(--paper);border:1px solid var(--line);border-radius:16px}}table{{width:100%;border-collapse:collapse;min-width:650px}}th,td{{padding:14px 16px;text-align:left;border-bottom:1px solid var(--line)}}th{{color:var(--muted);font-size:12px}}td:first-child{{font-weight:700}}.free{{display:inline-block;margin-left:8px;padding:2px 7px;border-radius:99px;background:#e3f0e5;color:#326442;font-size:10px}}.empty{{text-align:center;color:var(--muted);padding:30px}}@media(max-width:700px){{.summary{{grid-template-columns:repeat(2,1fr)}}}}
+        </style></head><body><main><a href="{self.url('/learning')}">← Материалы</a><h1>Аналитика материалов</h1><section class="summary"><div class="metric"><b>{totals["materials"]}</b><span>материалов</span></div><div class="metric"><b>{totals["views"]}</b><span>уникальных просмотров</span></div><div class="metric"><b>{completion_rate}%</b><span>дочитали до конца</span></div><div class="metric"><b>{totals["likes"]}</b><span>лайков</span></div></section><div class="table-wrap"><table><thead><tr><th>Материал</th><th>Просмотры</th><th>Дочитали</th><th>Завершение</th><th>Лайки</th></tr></thead><tbody>{rows}</tbody></table></div></main></body></html>''', content_type="text/html")
 
     async def index(self, request: web.Request) -> web.Response:
         db = await self.connect()
@@ -140,7 +233,7 @@ class LearningAdmin:
             @media(max-width:680px){{.top,.material{{align-items:stretch;flex-direction:column}}.actions{{justify-content:flex-start}}input[name=q]{{min-width:0;width:100%}}}}
             </style></head><body><main><p><a href="{self.url('/')}">← Админка</a></p>
             <div class="top"><div><h1>Материалы</h1><p>Создавайте уроки и добавляйте контент. Задания добавляются отдельно.</p></div>
-            <a class="button" href="{self.material_url()}">+ Добавить материал</a></div>
+            <div class="actions"><a class="button secondary" href="{self.url('/learning', analytics=1)}">Аналитика</a><a class="button" href="{self.material_url()}">+ Добавить материал</a></div></div>
             <form class="toolbar" method="get"><input name="q" value="{esc(query)}" placeholder="Найти материал">
             <select name="tag"><option value="">Все теги</option>{self.tag_options(tags, [tag] if tag else [])}</select><button class="secondary">Найти</button></form>
             {cards}</main></body></html>''',
@@ -198,12 +291,12 @@ class LearningAdmin:
             '<div id="cover-current" class="cover-current" hidden><img id="cover-preview" class="cover-preview" alt="Предпросмотр обложки"><button id="remove-cover-button" type="button" class="danger cover-remove">× Удалить обложку</button></div>'
         )
 
-        return web.Response(text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title} — Nastaunik</title><script defer src="/mini-app/static/admin_material.js?v=4"></script><style>
+        return web.Response(text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title} — Nastaunik</title><script defer src="/mini-app/static/admin_material.js?v=5"></script><style>
         :root{{--bg:#f7f5f2;--paper:#fff;--ink:#292421;--muted:#817873;--line:#e7e0da;--accent:#c56349;--soft:#f3ece7}}
         *{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,sans-serif}}main{{max-width:900px;margin:auto;padding:24px 20px 80px}}a{{color:inherit}}h1{{font:700 36px Georgia,serif;margin:0}}h2{{font-size:21px;margin:0 0 6px}}p{{margin:4px 0}}.topbar{{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:22px}}.top-actions,.actions{{display:flex;align-items:center;gap:9px;flex-wrap:wrap}}button,.button{{border:0;border-radius:11px;padding:11px 16px;background:var(--accent);color:white;font:700 14px system-ui;cursor:pointer;text-decoration:none}}.secondary{{background:var(--soft);color:var(--ink)}}.danger{{background:transparent;color:#a44439}}.card{{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:24px;margin:14px 0}}label.field{{display:block;margin:18px 0 0;color:var(--muted);font-size:13px}}input,textarea{{width:100%;margin-top:6px;border:1px solid var(--line);border-radius:11px;padding:12px 13px;background:#fff;font:inherit;color:var(--ink)}}textarea{{resize:vertical;min-height:92px}}.title-input{{font-size:20px;font-weight:700}}.toolbar{{display:flex;gap:5px;flex-wrap:wrap;padding:7px;background:var(--soft);border-radius:11px 11px 0 0;margin-top:7px}}.toolbar button{{padding:7px 11px;background:transparent;color:var(--ink)}}.toolbar button:hover{{background:#fff}}.toolbar .media-button{{background:var(--accent);color:#fff}}.editor{{min-height:330px;border:1px solid var(--line);border-top:0;border-radius:0 0 11px 11px;padding:18px;font-size:17px;line-height:1.7;outline:none}}.editor:empty:before{{content:attr(data-placeholder);color:#aaa}}.editor figure.inline-media{{position:relative;margin:22px 0;padding:8px;border:1px solid transparent;border-radius:12px;cursor:grab}}.editor figure.inline-media:hover{{border-color:var(--line);background:var(--soft)}}.editor figure.inline-media:before{{content:'⠿ Перетащите, чтобы изменить место';display:block;color:var(--muted);font-size:12px;margin-bottom:6px}}.editor figure img,.editor figure video{{display:block;max-width:100%;max-height:520px;border-radius:10px;margin:auto}}.editor figcaption{{color:var(--muted);font-size:14px;text-align:center;padding:7px;outline:none}}.hint,.empty-note{{font-size:13px;color:var(--muted)}}.tag-list{{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}}.tag-wrap{{display:inline-flex;align-items:center;border:1px solid color-mix(in srgb,var(--tag) 50%,white);background:color-mix(in srgb,var(--tag) 12%,white);border-radius:999px;overflow:hidden}}.tag-wrap input{{display:none}}.tag-wrap label{{padding:7px 7px 7px 12px;cursor:pointer;color:var(--ink)}}.tag-wrap:has(input:checked){{background:var(--tag);border-color:var(--tag)}}.tag-wrap:has(input:checked) label{{color:#fff}}.tag-edit{{padding:6px 10px 6px 4px;background:transparent;color:inherit;opacity:0}}.tag-wrap:hover .tag-edit{{opacity:.75}}.add-tag{{border:1px dashed var(--line);background:white;color:var(--accent);border-radius:999px;padding:7px 13px}}.cover{{display:flex;align-items:center;gap:18px}}.cover-current{{display:grid;gap:6px;justify-items:start}}.cover-current[hidden]{{display:none}}.cover-preview{{width:180px;aspect-ratio:16/9;object-fit:cover;border-radius:12px;background:var(--soft)}}.cover-remove{{padding:6px 3px;font-size:12px}}.drop{{flex:1;border:1px dashed #c9b9ae;border-radius:13px;padding:18px;text-align:center;cursor:pointer}}.drop input{{display:none}}.section-head{{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:16px}}.asset-card{{display:grid;grid-template-columns:42px 1fr auto;gap:13px;align-items:start;border-top:1px solid var(--line);padding:16px 0}}.asset-icon{{width:42px;height:42px;border-radius:10px;background:var(--soft);display:grid;place-items:center;font-size:20px}}.asset-fields input,.asset-fields textarea{{margin:0 0 8px}}.asset-fields textarea{{min-height:68px}}.asset-actions{{display:flex;flex-direction:column;gap:5px}}.new-asset{{background:var(--soft);border-radius:14px;padding:17px;margin-top:12px}}.new-asset-grid{{display:grid;grid-template-columns:150px 1fr;gap:10px}}select{{width:100%;border:1px solid var(--line);border-radius:11px;padding:12px;background:#fff;font:inherit}}dialog{{border:0;border-radius:18px;padding:24px;box-shadow:0 20px 80px #0003;width:min(420px,90vw)}}dialog::backdrop{{background:#211b1888}}.toast{{background:#e1f2e4;color:#26613b;border-radius:11px;padding:11px 15px;margin-bottom:14px}}.save-state{{font-size:13px;color:var(--muted)}}.loading-overlay{{position:fixed;z-index:20;inset:0;background:#261d19aa;display:none;place-items:center;padding:20px}}.loading-overlay.active{{display:grid}}.loading-box{{width:min(390px,90vw);background:#fff;border-radius:18px;padding:24px;text-align:center;box-shadow:0 24px 80px #0004}}.spinner{{width:38px;height:38px;border:4px solid var(--soft);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 14px}}.progress{{height:8px;background:var(--soft);border-radius:99px;overflow:hidden;margin-top:14px}}.progress i{{display:block;width:8%;height:100%;background:var(--accent);transition:width .2s}}@keyframes spin{{to{{transform:rotate(360deg)}}}}@media(max-width:650px){{.topbar,.cover{{align-items:stretch;flex-direction:column}}.asset-card{{grid-template-columns:42px 1fr}}.asset-actions{{grid-column:2;flex-direction:row}}.new-asset-grid{{grid-template-columns:1fr}}.top-actions{{width:100%}}.top-actions>button{{flex:1}}}}
         </style></head><body><div id="loading-overlay" class="loading-overlay"><div class="loading-box"><div class="spinner"></div><b id="loading-text">Загрузка…</b><div class="progress"><i id="loading-progress"></i></div></div></div><script>window.addEventListener('DOMContentLoaded',()=>{{const overlay=document.getElementById('loading-overlay'),loadingText=document.getElementById('loading-text'),loadingProgress=document.getElementById('loading-progress'),mainForm=document.getElementById('article-form'),uploadUrl=mainForm.getAttribute('action');function showLoading(text,percent=8){{loadingText.textContent=text;loadingProgress.style.width=percent+'%';overlay.classList.add('active')}}function hideLoading(){{overlay.classList.remove('active')}}function uploadWithProgress(data,text){{return new Promise((resolve,reject)=>{{const xhr=new XMLHttpRequest();xhr.open('POST',uploadUrl);showLoading(text);xhr.upload.onprogress=e=>{{if(e.lengthComputable){{const p=Math.max(8,Math.round(e.loaded/e.total*100));loadingProgress.style.width=p+'%';loadingText.textContent=text+' '+p+'%'}}}};xhr.upload.onload=()=>{{loadingProgress.style.width='100%';loadingText.textContent='Сохраняем загруженный файл…'}};xhr.onload=()=>xhr.status>=200&&xhr.status<300?resolve(JSON.parse(xhr.responseText)):reject();xhr.onerror=reject;xhr.send(data)}})}}const coverInput=document.getElementById('cover-input'),coverPreview=document.getElementById('cover-preview'),coverLabel=document.getElementById('cover-label');coverInput.onchange=()=>{{const file=coverInput.files[0];if(!file)return;coverPreview.src=URL.createObjectURL(file);coverPreview.style.visibility='visible';coverLabel.textContent='Выбрано: '+file.name}};mainForm.addEventListener('submit',()=>showLoading(coverInput.files.length?'Загружаем обложку…':'Сохраняем материал…',coverInput.files.length?8:35));const attachmentInput=document.getElementById('attachment-input'),attachmentLabel=document.getElementById('attachment-label');attachmentInput.onchange=()=>{{if(attachmentInput.files[0])attachmentLabel.textContent='Выбрано: '+attachmentInput.files[0].name}};document.querySelectorAll('.upload-form').forEach(f=>f.addEventListener('submit',()=>showLoading('Загружаем дополнительный материал…')));const picker=document.getElementById('inline-media-file');picker.onchange=async()=>{{const file=picker.files[0];if(!file)return;const data=new FormData();data.append('action','inline_upload');data.append('inline_file',file);let item;try{{item=await uploadWithProgress(data,'Загружаем в статью…')}}catch(e){{hideLoading();document.getElementById('save-state').textContent='Не удалось загрузить';return}}hideLoading();const ed=document.getElementById('content-editor'),fig=document.createElement('figure'),media=document.createElement(item.kind==='video'?'video':'img'),caption=document.createElement('figcaption');fig.className='inline-media';fig.draggable=true;media.src=item.url;if(item.kind==='video'){{media.controls=true;media.preload='metadata';media.playsInline=true}}caption.contentEditable='true';caption.textContent='Добавьте подпись';fig.append(media,caption);if(savedRange){{savedRange.deleteContents();savedRange.insertNode(fig)}}else ed.appendChild(fig);const p=document.createElement('p');p.innerHTML='<br>';fig.after(p);wireMedia(fig.parentElement);sync();picker.value='';document.getElementById('save-state').textContent=item.waiting_save?'Видео загружено — нажмите «Сохранить»':'Медиа добавлено';if(!item.waiting_save)autosave()}}}});</script><main><a href="{self.url('/learning')}">← Все материалы</a><form id="article-form" data-id="{m["id"]}" method="post" action="{self.url('/learning/material/action')}" enctype="multipart/form-data"><input type="hidden" name="action" value="material_save"><input type="hidden" name="editor" value="1"><input type="hidden" name="id" value="{m["id"]}"><div class="topbar"><h1>{title}</h1><div class="top-actions"><span id="save-state" class="save-state"></span><button>Сохранить</button>{existing_controls}</div></div>{saved}
         <section class="card"><h2>Материал</h2><p class="hint">Название и короткий анонс для карточки в приложении.</p><label class="field">Название<input class="title-input" name="title" value="{esc(m["title"])}" placeholder="Введите название" required autofocus></label><label class="field">Краткое описание<textarea name="short_description" placeholder="О чём этот материал — 1–3 предложения">{esc(m["short_description"] or "")}</textarea></label><label style="display:flex;align-items:flex-start;gap:10px;margin-top:18px;padding:14px;border:1px solid var(--line);border-radius:12px;cursor:pointer"><input type="checkbox" name="is_free" value="1" {"checked" if m["is_free"] else ""} style="width:18px;height:18px;margin:2px 0 0;flex:none"><span><b>Доступен бесплатно</b><br><span class="hint">Материал смогут открыть пользователи без оплаченной подписки.</span></span></label></section>
-        <section class="card"><h2>Статья</h2><p class="hint">Можно вставить готовый пост — абзацы, списки, ссылки и форматирование сохранятся.</p><div class="toolbar"><button type="button" data-cmd="bold"><b>Ж</b></button><button type="button" data-cmd="italic"><i>К</i></button><button type="button" data-cmd="formatBlock" data-value="h2">Заголовок</button><button type="button" data-cmd="insertUnorderedList">• Список</button><button type="button" data-cmd="insertOrderedList">1. Список</button><button type="button" id="add-link">Ссылка</button><button type="button" class="media-button" id="insert-media">＋ Фото/видео</button><input id="inline-media-file" type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.mp4" hidden><button type="button" data-cmd="removeFormat">Очистить</button></div><div id="content-editor" class="editor" contenteditable="true" data-placeholder="Вставьте пост из Telegram или начните писать…">{clean_rich_text(m["full_description"] or "")}</div><textarea id="content-source" name="full_description" hidden></textarea></section>
+        <section class="card"><h2>Статья</h2><p class="hint">Можно вставить готовый пост — абзацы, списки, ссылки и форматирование сохранятся.</p><div class="toolbar"><button type="button" data-cmd="undo" title="Отменить">↶</button><button type="button" data-cmd="redo" title="Повторить">↷</button><button type="button" data-cmd="bold"><b>Ж</b></button><button type="button" data-cmd="italic"><i>К</i></button><button type="button" data-cmd="formatBlock" data-value="h2">Заголовок</button><button type="button" data-cmd="formatBlock" data-value="blockquote">Цитата</button><button type="button" data-cmd="insertUnorderedList">• Список</button><button type="button" data-cmd="insertOrderedList">1. Список</button><button type="button" id="add-divider">Разделитель</button><button type="button" id="add-link">Ссылка</button><button type="button" class="media-button" id="insert-media">＋ Фото/видео</button><input id="inline-media-file" type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.mp4" hidden><button type="button" data-cmd="removeFormat">Очистить</button></div><div id="content-editor" class="editor" contenteditable="true" data-placeholder="Вставьте пост из Telegram или начните писать…">{clean_rich_text(m["full_description"] or "")}</div><textarea id="content-source" name="full_description" hidden></textarea></section>
         <section class="card"><div class="section-head"><div><h2>Теги</h2><p class="hint">Нажмите на тег, чтобы выбрать. Карандаш появляется при наведении.</p></div><button type="button" class="add-tag" onclick="document.getElementById('new-tag').showModal()">＋ Новый тег</button></div><div class="tag-list">{tag_chips or '<span class="empty-note">Тегов пока нет.</span>'}</div></section>
         <section class="card"><h2>Обложка</h2><p class="hint">Необязательно. Если её нет, карточка возьмёт первое изображение статьи, а затем — видео.</p><input id="remove-cover" type="hidden" name="remove_cover" value="0"><div class="cover">{cover_preview}<label class="drop"><b id="cover-label">＋ Загрузить обложку</b><br><span class="hint">JPG, PNG или WEBP · 16:9</span><input id="cover-input" type="file" name="cover_file" accept=".jpg,.jpeg,.png,.webp"></label></div></section></form>
         <section class="card"><div class="section-head"><div><h2>Дополнительные материалы</h2><p class="hint">PDF, документ, презентация, таблица, изображение или видео.</p></div></div>{file_cards}<form class="new-asset upload-form" method="post" action="{self.url('/learning/material/action')}" enctype="multipart/form-data"><input type="hidden" name="action" value="file_add"><input type="hidden" name="material_id" value="{m["id"]}"><input name="file_title" placeholder="Заголовок материала"><textarea name="file_description" placeholder="Кратко опишите, что внутри"></textarea><label class="drop"><b id="attachment-label">＋ Выбрать файл</b><input id="attachment-input" type="file" name="material_file" required></label><button {"" if material else "disabled"}>Добавить материал</button>{'' if material else '<span class="hint"> Сначала сохраните основной материал.</span>'}</form></section>
@@ -357,6 +450,44 @@ class LearningAdmin:
             logger.exception("Video optimization failed for %s", target.name)
             return False, original_size, "Не удалось обработать видео"
 
+    async def create_video_poster(self, target: Path) -> str | None:
+        """Create a lightweight static frame so catalog cards never load the video."""
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg or not target.is_file() or target.suffix.lower() != ".mp4":
+            return None
+        poster = target.with_name(f"{target.stem}.poster.webp")
+        temporary = poster.with_name(f"{poster.stem}.temporary.webp")
+        command = (
+            ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+            "-ss", "0.3", "-i", str(target), "-frames:v", "1",
+            "-vf", "scale=w='min(640,iw)':h=-2", "-c:v", "libwebp", "-quality", "76",
+            str(temporary),
+        )
+        process = None
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *command, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE
+            )
+            _, stderr = await asyncio.wait_for(process.communicate(), timeout=90)
+            if process.returncode == 0 and temporary.is_file() and temporary.stat().st_size:
+                temporary.replace(poster)
+                return poster.name
+            temporary.unlink(missing_ok=True)
+            logger.warning("Video poster failed for %s: %s", target.name, stderr.decode(errors="replace")[-500:])
+        except asyncio.CancelledError:
+            if process and process.returncode is None:
+                process.kill()
+                await process.wait()
+            temporary.unlink(missing_ok=True)
+            raise
+        except (OSError, asyncio.TimeoutError):
+            if process and process.returncode is None:
+                process.kill()
+                await process.wait()
+            temporary.unlink(missing_ok=True)
+            logger.exception("Video poster failed for %s", target.name)
+        return None
+
     async def enqueue_video(self, db, target: Path, status: str = "queued") -> None:
         if target.suffix.lower() != ".mp4":
             return
@@ -366,7 +497,7 @@ class LearningAdmin:
                VALUES(?,?,?,?,?)
                ON CONFLICT(stored_name) DO UPDATE SET
                    status=excluded.status, original_size=excluded.original_size,
-                   optimized_size=NULL, error=NULL, started_at=NULL, completed_at=NULL,
+                   optimized_size=NULL, poster_name=NULL, error=NULL, started_at=NULL, completed_at=NULL,
                    updated_at=excluded.updated_at""",
             (target.name, status, target.stat().st_size, now, now),
         )
@@ -406,7 +537,7 @@ class LearningAdmin:
         placeholders = ",".join("?" for _ in names)
         rows = await self.rows(
             db,
-            f"SELECT stored_name,status,original_size,optimized_size,error,created_at,started_at,completed_at FROM mini_app_video_jobs WHERE stored_name IN ({placeholders}) ORDER BY id DESC",
+            f"SELECT stored_name,status,original_size,optimized_size,poster_name,error,created_at,started_at,completed_at FROM mini_app_video_jobs WHERE stored_name IN ({placeholders}) ORDER BY id DESC",
             tuple(sorted(names)),
         )
         return [dict(row) for row in rows]
@@ -430,13 +561,13 @@ class LearningAdmin:
         finally:
             await db.close()
 
-    async def finish_video_job(self, job_id: int, ok: bool, size: int, error: str | None) -> None:
+    async def finish_video_job(self, job_id: int, ok: bool, size: int, error: str | None, poster_name: str | None = None) -> None:
         db = await self.connect()
         try:
             now = datetime.utcnow().isoformat(timespec="seconds")
             await db.execute(
-                "UPDATE mini_app_video_jobs SET status=?,optimized_size=?,error=?,completed_at=?,updated_at=? WHERE id=?",
-                ("ready" if ok else "failed", size or None, (error or "")[-1000:] or None, now, now, job_id),
+                "UPDATE mini_app_video_jobs SET status=?,optimized_size=?,poster_name=?,error=?,completed_at=?,updated_at=? WHERE id=?",
+                ("ready" if ok else "failed", size or None, poster_name, (error or "")[-1000:] or None, now, now, job_id),
             )
             if ok:
                 await db.execute(
@@ -448,21 +579,138 @@ class LearningAdmin:
             await db.close()
 
     async def video_worker(self) -> None:
-        media_dir = Path(__file__).resolve().parent.parent / "media" / "mini_app"
         while True:
             job = await self.claim_video_job()
             if not job:
                 await asyncio.sleep(1.5)
                 continue
-            target = media_dir / Path(job["stored_name"]).name
+            target = self.media_dir / Path(job["stored_name"]).name
             try:
                 ok, size, error = await self.optimize_video(target)
-                await self.finish_video_job(job["id"], ok, size, error)
+                poster_name = await self.create_video_poster(target)
+                await self.finish_video_job(job["id"], ok, size, error, poster_name)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 logger.exception("Background video processing failed for %s", target.name)
                 await self.finish_video_job(job["id"], False, target.stat().st_size if target.is_file() else 0, str(exc))
+
+    async def cleanup_orphan_uploads(self, *, minimum_age_hours: int = 24) -> int:
+        """Remove abandoned content uploads while preserving every saved reference and active job."""
+        cutoff = datetime.utcnow() - timedelta(hours=minimum_age_hours)
+        removed = 0
+        db = await self.connect()
+        try:
+            referenced: set[str] = set()
+            for sql in (
+                "SELECT cover_url AS value FROM mini_app_materials WHERE cover_url IS NOT NULL",
+                "SELECT full_description AS value FROM mini_app_materials WHERE full_description IS NOT NULL",
+                "SELECT content AS value FROM mini_app_material_blocks WHERE content IS NOT NULL",
+            ):
+                for row in await self.rows(db, sql):
+                    referenced.update(self.media_names(row["value"]))
+            for row in await self.rows(db, "SELECT stored_name FROM mini_app_material_files"):
+                referenced.add(Path(row["stored_name"]).name)
+            for row in await self.rows(db, "SELECT stored_name,poster_name FROM mini_app_video_jobs WHERE poster_name IS NOT NULL"):
+                if Path(row["stored_name"]).name in referenced:
+                    referenced.add(Path(row["poster_name"]).name)
+            active = {
+                Path(row["stored_name"]).name
+                for row in await self.rows(db, "SELECT stored_name FROM mini_app_video_jobs WHERE status IN ('queued','processing')")
+            }
+            stale_waiting = await self.rows(
+                db,
+                "SELECT id,stored_name,poster_name FROM mini_app_video_jobs WHERE status='waiting_save' AND created_at<?",
+                (cutoff.isoformat(timespec="seconds"),),
+            )
+            for row in stale_waiting:
+                name = Path(row["stored_name"]).name
+                if name in referenced:
+                    continue
+                candidates = {name, f"{Path(name).stem}.optimized.mp4", f"{Path(name).stem}.poster.webp"}
+                if row["poster_name"]:
+                    candidates.add(Path(row["poster_name"]).name)
+                for candidate in candidates:
+                    target = self.media_dir / candidate
+                    if target.is_file():
+                        target.unlink()
+                        removed += 1
+                await db.execute("DELETE FROM mini_app_video_jobs WHERE id=?", (row["id"],))
+            if self.media_dir.is_dir():
+                for target in self.media_dir.glob("content-*"):
+                    if not target.is_file() or target.name in referenced or target.name in active:
+                        continue
+                    modified = datetime.utcfromtimestamp(target.stat().st_mtime)
+                    if modified < cutoff:
+                        target.unlink()
+                        removed += 1
+            await db.commit()
+        finally:
+            await db.close()
+        if removed:
+            logger.info("Removed %s abandoned Mini App uploads", removed)
+        return removed
+
+    async def backfill_video_posters(self) -> int:
+        """Create missing posters for videos that were uploaded before poster support."""
+        db = await self.connect()
+        try:
+            names: set[str] = set()
+            for sql in (
+                "SELECT full_description AS value FROM mini_app_materials WHERE full_description IS NOT NULL",
+                "SELECT content AS value FROM mini_app_material_blocks WHERE content IS NOT NULL",
+            ):
+                for row in await self.rows(db, sql):
+                    names.update(self.media_names(row["value"]))
+            for row in await self.rows(db, "SELECT stored_name FROM mini_app_material_files"):
+                names.add(Path(row["stored_name"]).name)
+            names = {name for name in names if name.lower().endswith(".mp4")}
+            jobs = {
+                row["stored_name"]: dict(row)
+                for row in await self.rows(db, "SELECT id,stored_name,status,poster_name FROM mini_app_video_jobs")
+            }
+            created = 0
+            for name in sorted(names):
+                job = jobs.get(name)
+                if job and job["status"] in {"queued", "processing", "waiting_save"}:
+                    continue
+                if job and job["poster_name"] and (self.media_dir / Path(job["poster_name"]).name).is_file():
+                    continue
+                target = self.media_dir / Path(name).name
+                poster_name = await self.create_video_poster(target)
+                if not poster_name:
+                    continue
+                now = datetime.utcnow().isoformat(timespec="seconds")
+                await db.execute(
+                    """INSERT INTO mini_app_video_jobs(
+                           stored_name,status,original_size,optimized_size,poster_name,created_at,completed_at,updated_at
+                       ) VALUES(?,'ready',?,?,?,?,?,?)
+                       ON CONFLICT(stored_name) DO UPDATE SET poster_name=excluded.poster_name,updated_at=excluded.updated_at""",
+                    (name, target.stat().st_size, target.stat().st_size, poster_name, now, now, now),
+                )
+                await db.commit()
+                created += 1
+            if created:
+                logger.info("Created %s missing Mini App video posters", created)
+            return created
+        finally:
+            await db.close()
+
+    async def cleanup_worker(self) -> None:
+        try:
+            await self.backfill_video_posters()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Failed to backfill Mini App video posters")
+        while True:
+            await asyncio.sleep(3600)
+            try:
+                await self.cleanup_orphan_uploads()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Failed to clean abandoned Mini App uploads")
 
     async def video_worker_context(self, app):
         await self.schema.init()
@@ -473,13 +721,21 @@ class LearningAdmin:
             await db.commit()
         finally:
             await db.close()
+        try:
+            await self.cleanup_orphan_uploads()
+        except Exception:
+            logger.exception("Initial abandoned upload cleanup failed")
         task = asyncio.create_task(self.video_worker(), name="mini-app-video-worker")
+        cleanup_task = asyncio.create_task(self.cleanup_worker(), name="mini-app-upload-cleanup")
         try:
             yield
         finally:
             task.cancel()
+            cleanup_task.cancel()
             with suppress(asyncio.CancelledError):
                 await task
+            with suppress(asyncio.CancelledError):
+                await cleanup_task
 
     async def save_material_file(self, db, material_id: int, upload, title: str = "", description: str = "") -> None:
         if not getattr(upload, "filename", None) or not getattr(upload, "file", None):
@@ -488,10 +744,9 @@ class LearningAdmin:
         allowed = {".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".txt", ".md", ".jpg", ".jpeg", ".png", ".webp", ".mp3", ".mp4"}
         if extension not in allowed:
             raise web.HTTPBadRequest(text="Этот тип файла не поддерживается")
-        media_dir = Path(__file__).resolve().parent.parent / "media" / "mini_app"
-        media_dir.mkdir(parents=True, exist_ok=True)
+        self.media_dir.mkdir(parents=True, exist_ok=True)
         stored_name = f"{secrets.token_urlsafe(18)}{extension}"
-        target = media_dir / stored_name
+        target = self.media_dir / stored_name
         with target.open("wb") as output:
             shutil.copyfileobj(upload.file, output)
         await self.enqueue_video(db, target)
@@ -506,10 +761,9 @@ class LearningAdmin:
         extension = Path(upload.filename).suffix.lower()
         if extension not in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4"}:
             raise web.HTTPBadRequest(text="Для статьи можно загрузить изображение или MP4-видео")
-        media_dir = Path(__file__).resolve().parent.parent / "media" / "mini_app"
-        media_dir.mkdir(parents=True, exist_ok=True)
+        self.media_dir.mkdir(parents=True, exist_ok=True)
         stored_name = f"content-{secrets.token_urlsafe(18)}{extension}"
-        target = media_dir / stored_name
+        target = self.media_dir / stored_name
         with target.open("wb") as output:
             shutil.copyfileobj(upload.file, output)
         await self.enqueue_video(db, target, "waiting_save" if wait_for_material_save else "queued")
@@ -521,10 +775,9 @@ class LearningAdmin:
         extension = Path(upload.filename).suffix.lower()
         if extension not in {".jpg", ".jpeg", ".png", ".webp"}:
             raise web.HTTPBadRequest(text="Обложка должна быть JPG, PNG или WEBP")
-        media_dir = Path(__file__).resolve().parent.parent / "media" / "mini_app"
-        media_dir.mkdir(parents=True, exist_ok=True)
+        self.media_dir.mkdir(parents=True, exist_ok=True)
         stored_name = f"cover-{secrets.token_urlsafe(18)}{extension}"
-        target = media_dir / stored_name
+        target = self.media_dir / stored_name
         with target.open("wb") as output:
             shutil.copyfileobj(upload.file, output)
         cur = await db.execute("SELECT cover_url FROM mini_app_materials WHERE id=?", (material_id,))
@@ -532,7 +785,7 @@ class LearningAdmin:
         await db.execute("UPDATE mini_app_materials SET cover_url=?, updated_at=? WHERE id=?", (f"/mini-app/media/{stored_name}", datetime.utcnow().isoformat(timespec="seconds"), material_id))
         previous_url = str(previous["cover_url"] or "") if previous else ""
         if previous_url.startswith("/mini-app/media/"):
-            previous_target = media_dir / Path(previous_url.split("?", 1)[0]).name
+            previous_target = self.media_dir / Path(previous_url.split("?", 1)[0]).name
             if previous_target != target and previous_target.is_file():
                 previous_target.unlink()
 
@@ -545,7 +798,7 @@ class LearningAdmin:
         )
         cover_url = str(row["cover_url"] or "") if row else ""
         if cover_url.startswith("/mini-app/media/"):
-            target = Path(__file__).resolve().parent.parent / "media" / "mini_app" / Path(cover_url.split("?", 1)[0]).name
+            target = self.media_dir / Path(cover_url.split("?", 1)[0]).name
             if target.is_file():
                 target.unlink()
 
@@ -651,9 +904,12 @@ class LearningAdmin:
                 row = await cur.fetchone()
                 if row:
                     await db.execute("DELETE FROM mini_app_material_files WHERE id=?", (int(form["id"]),))
-                    target = Path(__file__).resolve().parent.parent / "media" / "mini_app" / Path(row["stored_name"]).name
+                    target = self.media_dir / Path(row["stored_name"]).name
                     if target.is_file():
                         target.unlink()
+                    if target.suffix.lower() == ".mp4":
+                        target.with_name(f"{target.stem}.poster.webp").unlink(missing_ok=True)
+                        await db.execute("DELETE FROM mini_app_video_jobs WHERE stored_name=?", (target.name,))
             elif action == "material_delete":
                 item_id = int(form.get("id") or 0)
                 if not item_id:
@@ -669,11 +925,12 @@ class LearningAdmin:
                 if material_row:
                     stored_names.extend(Path(url).name for url in re.findall(r'/mini-app/media/[A-Za-z0-9_.~-]+', str(material_row["full_description"] or "")))
                 await db.execute("DELETE FROM mini_app_materials WHERE id=?", (item_id,))
-                media_dir = Path(__file__).resolve().parent.parent / "media" / "mini_app"
                 for stored_name in stored_names:
-                    target = media_dir / Path(stored_name).name
+                    target = self.media_dir / Path(stored_name).name
                     if target.is_file():
                         target.unlink()
+                    if target.suffix.lower() == ".mp4":
+                        target.with_name(f"{target.stem}.poster.webp").unlink(missing_ok=True)
             elif action == "material_duplicate":
                 source_id = int(form.get("id") or 0)
                 cur = await db.execute("SELECT * FROM mini_app_materials WHERE id=?", (source_id,))

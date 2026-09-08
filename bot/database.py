@@ -392,6 +392,7 @@ class Database:
                     status TEXT NOT NULL DEFAULT 'waiting_save',
                     original_size INTEGER NOT NULL DEFAULT 0,
                     optimized_size INTEGER,
+                    poster_name TEXT,
                     attempts INTEGER NOT NULL DEFAULT 0,
                     error TEXT,
                     created_at TEXT NOT NULL,
@@ -440,6 +441,7 @@ class Database:
             await self._ensure_column(db, "mini_app_material_files", "title", "TEXT")
             await self._ensure_column(db, "mini_app_material_files", "description", "TEXT")
             await self._ensure_column(db, "mini_app_material_blocks", "description", "TEXT")
+            await self._ensure_column(db, "mini_app_video_jobs", "poster_name", "TEXT")
             await db.commit()
 
     async def _ensure_column(self, db: aiosqlite.Connection, table_name: str, column_name: str, column_definition: str) -> None:
