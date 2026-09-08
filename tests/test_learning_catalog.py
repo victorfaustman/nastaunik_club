@@ -131,6 +131,10 @@ class LearningCatalogCardTests(unittest.TestCase):
         self.assertIn("<h2>Заголовок</h2>", cleaned)
         self.assertIn('class="inline-media"', cleaned)
         self.assertIn('src="/mini-app/media/a.jpg"', cleaned)
+        self.assertNotIn(
+            "Добавьте подпись",
+            clean_rich_text('<figure><img src="/mini-app/media/a.jpg"><figcaption contenteditable="true">Добавьте подпись</figcaption></figure>'),
+        )
 
     def test_cleanup_only_removes_old_unreferenced_uploads(self):
         async def check():

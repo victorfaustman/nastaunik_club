@@ -44,7 +44,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function addRemoveButton(figure) {
     figure.draggable = true;
     const caption = figure.querySelector(':scope > figcaption');
-    if (caption) caption.contentEditable = 'true';
+    if (caption?.textContent.trim().toLocaleLowerCase('ru') === 'добавьте подпись') caption.remove();
+    else if (caption) caption.contentEditable = 'true';
     figure.querySelectorAll('video').forEach((video) => {
       video.preload = 'metadata';
       video.playsInline = true;
