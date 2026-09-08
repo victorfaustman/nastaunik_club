@@ -1,4 +1,5 @@
 import asyncio
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -76,14 +77,23 @@ class CourseAdminBuilderTests(unittest.TestCase):
                     )).fetchone()
                 self.assertEqual(moved_lesson["module_id"], second_module["id"])
 
+                admin.media_dir = Path(directory) / "media"
+                inline_response = await admin.course_admin.action(None, MultiDict([
+                    ("action", "course_inline_upload"),
+                    ("course_id", str(course["id"])),
+                    ("lesson_id", str(lesson["id"])),
+                    ("inline_file", SimpleNamespace(filename="photo.jpg", file=io.BytesIO(b"image"))),
+                ]))
+                self.assertEqual(inline_response.status, 200)
+                self.assertIn('"kind": "image"', inline_response.text)
+
                 with self.assertRaises(web.HTTPSeeOther):
                     await admin.course_admin.action(None, MultiDict([
                         ("action", "course_block_add"),
                         ("course_id", str(course["id"])),
                         ("lesson_id", str(lesson["id"])),
                         ("block_type", "longread"),
-                        ("title", "Введение"),
-                        ("content", "Текст урока"),
+                        ("content", "<script>bad()</script><p>Текст урока</p>"),
                     ]))
                 with self.assertRaises(web.HTTPSeeOther):
                     await admin.course_admin.action(None, MultiDict([
@@ -98,15 +108,23 @@ class CourseAdminBuilderTests(unittest.TestCase):
                         "SELECT block_type,content FROM mini_app_course_blocks ORDER BY sort_order"
                     )).fetchall()
                 self.assertEqual([row["block_type"] for row in rows], ["longread", "test"])
+                self.assertNotIn("script", rows[0]["content"])
                 index_html = (await admin.course_admin.index(None)).text
                 course_html = (await admin.course_admin.course_editor(SimpleNamespace(query={"course": str(course["id"])}))).text
                 lesson_html = (await admin.course_admin.lesson_editor(SimpleNamespace(query={"course": str(course["id"]), "lesson": str(lesson["id"])}))).text
+                empty_outline = admin.course_admin.course_outline(
+                    {"id": course["id"], "title": course["title"]}, [], [], None
+                )
                 self.assertIn("Создать курс", index_html)
                 self.assertIn("Уроки без модулей", course_html)
                 self.assertIn('class="course-outline"', course_html)
                 self.assertIn("Перетаскивайте уроки и модули", course_html)
                 self.assertIn('data-tree-kind="module"', course_html)
                 self.assertIn('tree-lesson active', lesson_html)
+                self.assertIn('class="course-toolbar"', lesson_html)
+                self.assertIn('data-add-form="video"', lesson_html)
+                self.assertLess(empty_outline.index("Новый урок"), empty_outline.index("Без модуля"))
+                self.assertNotIn("Модулей пока нет", empty_outline)
                 self.assertIn("Лонгрид", lesson_html)
                 self.assertIn("Тест", lesson_html)
 
