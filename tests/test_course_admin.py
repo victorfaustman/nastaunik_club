@@ -115,6 +115,30 @@ class CourseAdminBuilderTests(unittest.TestCase):
                 self.assertNotIn("script", rows[0]["content"])
                 self.assertEqual(course_material["library_visible"], 0)
                 self.assertNotIn("script", course_material["full_description"])
+
+                async def course_material_post():
+                    return MultiDict([
+                        ("action", "material_save"),
+                        ("editor", "1"),
+                        ("id", str(course_material["id"])),
+                        ("title", "Лонгрид урока"),
+                        ("full_description", "<p>Текст урока</p>"),
+                        ("is_free", "1"),
+                        ("course_material", "1"),
+                        ("return_course", str(course["id"])),
+                        ("return_lesson", str(lesson["id"])),
+                        ("return_block", str(rows[0]["id"])),
+                    ])
+
+                with self.assertRaises(web.HTTPSeeOther):
+                    await admin.action(SimpleNamespace(post=course_material_post))
+                async with Database(database_path).connect() as db:
+                    protected_course_material = await (await db.execute(
+                        "SELECT is_free,library_visible FROM mini_app_materials WHERE id=?",
+                        (course_material["id"],),
+                    )).fetchone()
+                self.assertEqual(protected_course_material["is_free"], 0)
+                self.assertEqual(protected_course_material["library_visible"], 0)
                 with self.assertRaises(web.HTTPSeeOther):
                     await admin.course_admin.action(None, MultiDict([
                         ("action", "course_module_add"),
@@ -142,6 +166,7 @@ class CourseAdminBuilderTests(unittest.TestCase):
                     "return_lesson": str(lesson["id"]),
                     "return_block": str(rows[0]["id"]),
                 }))).text
+                regular_material_html = (await admin.article_editor(SimpleNamespace(query={"material": "new"}))).text
                 empty_outline = admin.course_admin.course_outline(
                     {"id": course["id"], "title": course["title"]}, [], [], None
                 )
@@ -160,10 +185,18 @@ class CourseAdminBuilderTests(unittest.TestCase):
                 self.assertIn('data-add-form="video"', lesson_html)
                 self.assertIn('class="tree-delete"', lesson_html)
                 self.assertIn("Вернуться к уроку", material_html)
+                self.assertIn("Материал урока", material_html)
+                self.assertIn("Этот лонгрид является частью курса", material_html)
                 self.assertIn('admin_uploads.js?v=1', material_html)
-                self.assertIn('data-upload-label="Обложка материала"', material_html)
-                self.assertIn('data-upload-label="Дополнительный материал"', material_html)
-                self.assertIn("Дополнительные материалы", material_html)
+                self.assertIn('data-upload-label="Медиа лонгрида"', material_html)
+                self.assertNotIn('name="is_free"', material_html)
+                self.assertNotIn("<h2>Теги</h2>", material_html)
+                self.assertNotIn("<h2>Обложка</h2>", material_html)
+                self.assertNotIn("<h2>Дополнительные материалы</h2>", material_html)
+                self.assertIn('name="is_free"', regular_material_html)
+                self.assertIn("<h2>Теги</h2>", regular_material_html)
+                self.assertIn("<h2>Обложка</h2>", regular_material_html)
+                self.assertIn("<h2>Дополнительные материалы</h2>", regular_material_html)
                 self.assertNotIn("Без модуля", empty_outline)
                 self.assertNotIn(">Модули<", empty_outline)
                 self.assertNotIn("Модулей пока нет", empty_outline)
