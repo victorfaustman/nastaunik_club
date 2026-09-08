@@ -46,7 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = new FormData(form);
         data.set('ajax', '1');
         try {
-          const response = await fetch(form.action, { method: 'POST', body: data });
+          const response = await fetch(form.getAttribute('action') || window.location.href, { method: 'POST', body: data });
           if (!response.ok) throw new Error('save failed');
           status.textContent = 'Сохранено';
         } catch (_) {
@@ -152,7 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
       data.set('lesson_id', form.elements.lesson_id.value);
       data.set('inline_file', file);
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', form.action);
+      xhr.open('POST', form.getAttribute('action') || window.location.href);
       status.textContent = 'Загружаем медиа…';
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) status.textContent = `Загружаем медиа… ${Math.round(event.loaded / event.total * 100)}%`;
@@ -213,7 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', form.action);
+      xhr.open('POST', form.getAttribute('action') || window.location.href);
       uploadText.textContent = form.querySelector('input[type="file"]')?.files.length ? 'Загружаем файл…' : 'Сохраняем…';
       uploadProgress.style.width = '8%';
       uploadOverlay.classList.add('active');

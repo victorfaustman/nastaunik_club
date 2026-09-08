@@ -183,7 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
       data.append('action', 'material_delete');
       data.append('ajax', '1');
       data.append('id', courseDeleteButton.dataset.id);
-      const response = await fetch(form.action, { method: 'POST', body: data });
+      const response = await fetch(form.getAttribute('action') || window.location.href, { method: 'POST', body: data });
       if (response.ok) window.location.href = courseReturnUrl;
       else alert('Не удалось удалить лонгрид');
     };
@@ -257,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
     data.append('action', 'video_status');
     data.append('material_id', materialId);
     try {
-      const response = await fetch(form.action, { method: 'POST', body: data });
+      const response = await fetch(form.getAttribute('action') || window.location.href, { method: 'POST', body: data });
       if (!response.ok) throw new Error('status request failed');
       const payload = await response.json();
       const busy = renderVideoJobs(payload.jobs || []);

@@ -159,7 +159,7 @@
       data.set('action', 'inline_upload');
     }
     data.set('inline_file', file);
-    upload(form.action, data, {
+    upload(form.getAttribute('action') || window.location.href, data, {
       file,
       title: 'Медиа в тексте',
       processingText: file.type.startsWith('video/') ? 'Сохраняем видео…' : 'Сохраняем изображение…',
@@ -188,7 +188,7 @@
       return;
     }
     if (typeof window.sync === 'function') window.sync();
-    upload(form.action, new FormData(form), {
+    upload(form.getAttribute('action') || window.location.href, new FormData(form), {
       file,
       title: form.dataset.uploadLabel || 'Медиафайл',
       processingText: file.type.startsWith('video/') ? 'Сохраняем и запускаем обработку…' : 'Сохраняем файл…',
