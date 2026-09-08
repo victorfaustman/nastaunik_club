@@ -187,6 +187,7 @@ class CourseAdminBuilderTests(unittest.TestCase):
                 self.assertIn("Вернуться к уроку", material_html)
                 self.assertIn("Материал урока", material_html)
                 self.assertIn("Этот лонгрид является частью курса", material_html)
+                self.assertIn("О чём этот лонгрид", material_html)
                 self.assertIn('admin_uploads.js?v=1', material_html)
                 self.assertIn('data-upload-label="Медиа лонгрида"', material_html)
                 self.assertNotIn('name="is_free"', material_html)
