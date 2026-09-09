@@ -439,9 +439,10 @@ async def get_course_lesson(
     async with db.connect() as conn:
         cur = await conn.execute(
             """SELECT b.*,m.title AS material_title,m.short_description AS material_description,
-                      m.full_description AS material_content
+                      m.full_description AS material_content,j.poster_name AS video_poster_name
                FROM mini_app_course_blocks b
                LEFT JOIN mini_app_materials m ON m.id=b.material_id
+               LEFT JOIN mini_app_video_jobs j ON j.stored_name=b.stored_name
                WHERE b.lesson_id=? ORDER BY b.sort_order,b.id""",
             (lesson_id,),
         )
@@ -452,6 +453,8 @@ async def get_course_lesson(
                 block["title"] = block.get("material_title") or block.get("title")
                 block["description"] = block.get("material_description") or block.get("description")
                 block["content"] = block.get("material_content") or block.get("content") or ""
+            if block["block_type"] == "video" and block.get("video_poster_name"):
+                block["poster_url"] = f"/mini-app/media/{Path(block['video_poster_name']).name}"
             if block["block_type"] == "test":
                 try:
                     settings = json.loads(block.get("settings_json") or "{}")
@@ -475,7 +478,7 @@ async def get_course_lesson(
                     submission = await submission_cur.fetchone()
                     if submission:
                         block["submission"] = dict(submission)
-            for key in ("settings_json", "stored_name", "material_title", "material_description", "material_content"):
+            for key in ("settings_json", "stored_name", "material_title", "material_description", "material_content", "video_poster_name"):
                 block.pop(key, None)
             blocks.append(block)
     lessons = course["lessons"]
