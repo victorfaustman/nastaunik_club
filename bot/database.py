@@ -460,6 +460,18 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_mini_app_course_assignment_block
                     ON mini_app_course_assignment_submissions(block_id, telegram_id);
 
+                CREATE TABLE IF NOT EXISTS mini_app_admin_revisions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    entity_type TEXT NOT NULL,
+                    entity_id INTEGER NOT NULL,
+                    snapshot_json TEXT NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'manual',
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_mini_app_admin_revisions_entity
+                    ON mini_app_admin_revisions(entity_type, entity_id, id DESC);
+
                 CREATE TABLE IF NOT EXISTS mini_app_favorites (
                     telegram_id INTEGER NOT NULL,
                     material_id INTEGER NOT NULL,

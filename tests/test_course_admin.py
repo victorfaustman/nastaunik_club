@@ -1,5 +1,6 @@
 import asyncio
 import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,95 @@ from bot.learning_admin_v2 import LearningAdmin
 
 
 class CourseAdminBuilderTests(unittest.TestCase):
+    def test_autosave_history_and_restore(self):
+        async def check():
+            with tempfile.TemporaryDirectory() as directory:
+                database_path = Path(directory) / "mini.db"
+                await Database(database_path).init()
+                admin = LearningAdmin(database_path, lambda path, **query: path)
+
+                with self.assertRaises(web.HTTPSeeOther):
+                    await admin.course_admin.action(None, MultiDict([
+                        ("action", "course_save"),
+                        ("title", "Первая версия"),
+                        ("description", "Исходное описание"),
+                        ("is_visible", "1"),
+                    ]))
+                async with Database(database_path).connect() as db:
+                    course = await (await db.execute("SELECT id FROM mini_app_courses")).fetchone()
+
+                response = await admin.course_admin.action(None, MultiDict([
+                    ("action", "course_save"),
+                    ("ajax", "1"),
+                    ("autosave", "1"),
+                    ("course_id", str(course["id"])),
+                    ("title", "Вторая версия"),
+                    ("description", "Сохранено автоматически"),
+                    ("is_visible", "1"),
+                ]))
+                self.assertEqual(response.status, 200)
+                async with Database(database_path).connect() as db:
+                    revisions = await (await db.execute(
+                        "SELECT id,snapshot_json FROM mini_app_admin_revisions WHERE entity_type='course' AND entity_id=? ORDER BY id",
+                        (course["id"],),
+                    )).fetchall()
+                self.assertGreaterEqual(len(revisions), 2)
+                first_revision_id = next(
+                    row["id"] for row in revisions
+                    if json.loads(row["snapshot_json"])["title"] == "Первая версия"
+                )
+
+                with self.assertRaises(web.HTTPSeeOther):
+                    await admin.course_admin.action(None, MultiDict([
+                        ("action", "course_revision_restore"),
+                        ("course_id", str(course["id"])),
+                        ("revision_id", str(first_revision_id)),
+                    ]))
+                async with Database(database_path).connect() as db:
+                    restored = await (await db.execute(
+                        "SELECT title,description FROM mini_app_courses WHERE id=?", (course["id"],)
+                    )).fetchone()
+                    restore_entry = await (await db.execute(
+                        "SELECT source FROM mini_app_admin_revisions WHERE entity_type='course' AND entity_id=? ORDER BY id DESC LIMIT 1",
+                        (course["id"],),
+                    )).fetchone()
+                self.assertEqual(restored["title"], "Первая версия")
+                self.assertEqual(restored["description"], "Исходное описание")
+                self.assertEqual(restore_entry["source"], "restore")
+
+                async def create_material():
+                    return MultiDict([
+                        ("action", "material_save"),
+                        ("editor", "1"),
+                        ("title", "Материал — версия 1"),
+                        ("full_description", "<p>Первый текст</p>"),
+                    ])
+
+                with self.assertRaises(web.HTTPSeeOther):
+                    await admin.action(SimpleNamespace(post=create_material))
+                async with Database(database_path).connect() as db:
+                    material = await (await db.execute("SELECT id FROM mini_app_materials")).fetchone()
+
+                async def autosave_material():
+                    return MultiDict([
+                        ("action", "material_save"),
+                        ("editor", "1"),
+                        ("ajax", "1"),
+                        ("autosave", "1"),
+                        ("id", str(material["id"])),
+                        ("title", "Материал — версия 2"),
+                        ("full_description", "<p>Второй текст</p>"),
+                    ])
+
+                material_response = await admin.action(SimpleNamespace(post=autosave_material))
+                self.assertEqual(material_response.status, 200)
+                material_html = (await admin.article_editor(SimpleNamespace(query={"material": str(material["id"])}))).text
+                self.assertIn("История изменений", material_html)
+                self.assertIn("Автосохранение", material_html)
+                self.assertIn("admin_autosave.js", material_html)
+
+        asyncio.run(check())
+
     def test_course_can_have_optional_modules_lessons_and_blocks(self):
         async def check():
             with tempfile.TemporaryDirectory() as directory:

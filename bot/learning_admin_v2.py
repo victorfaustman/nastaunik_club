@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import html
+import json
 import logging
 import mimetypes
 import re
@@ -125,6 +126,79 @@ class LearningAdmin:
     async def rows(self, db, sql, params=()):
         cur = await db.execute(sql, params)
         return await cur.fetchall()
+
+    async def save_revision(self, db, entity_type: str, entity_id: int, snapshot: dict, source: str) -> None:
+        payload = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        previous = await (await db.execute(
+            """SELECT snapshot_json FROM mini_app_admin_revisions
+               WHERE entity_type=? AND entity_id=? ORDER BY id DESC LIMIT 1""",
+            (entity_type, entity_id),
+        )).fetchone()
+        if previous and previous["snapshot_json"] == payload:
+            return
+        await db.execute(
+            """INSERT INTO mini_app_admin_revisions(entity_type,entity_id,snapshot_json,source,created_at)
+               VALUES(?,?,?,?,?)""",
+            (entity_type, entity_id, payload, source, datetime.utcnow().isoformat(timespec="seconds")),
+        )
+        await db.execute(
+            """DELETE FROM mini_app_admin_revisions
+               WHERE entity_type=? AND entity_id=? AND id NOT IN (
+                   SELECT id FROM mini_app_admin_revisions
+                   WHERE entity_type=? AND entity_id=? ORDER BY id DESC LIMIT 50
+               )""",
+            (entity_type, entity_id, entity_type, entity_id),
+        )
+
+    async def material_snapshot(self, db, material_id: int) -> dict | None:
+        row = await (await db.execute(
+            """SELECT title,short_description,full_description,cover_url,is_free,library_visible,status
+               FROM mini_app_materials WHERE id=?""",
+            (material_id,),
+        )).fetchone()
+        if not row:
+            return None
+        tag_rows = await self.rows(
+            db,
+            "SELECT tag_id FROM mini_app_material_tags WHERE material_id=? ORDER BY tag_id",
+            (material_id,),
+        )
+        return {**dict(row), "tag_ids": [int(item["tag_id"]) for item in tag_rows]}
+
+    async def revision_history_html(
+        self,
+        db,
+        entity_type: str,
+        entity_id: int,
+        *,
+        action: str,
+        hidden_fields: str = "",
+    ) -> str:
+        rows = await self.rows(
+            db,
+            """SELECT id,snapshot_json,source,created_at FROM mini_app_admin_revisions
+               WHERE entity_type=? AND entity_id=? ORDER BY id DESC LIMIT 20""",
+            (entity_type, entity_id),
+        )
+        cards = []
+        for row in rows:
+            try:
+                snapshot = json.loads(row["snapshot_json"])
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            try:
+                stamp = datetime.fromisoformat(row["created_at"]).strftime("%d.%m.%Y · %H:%M:%S")
+            except (TypeError, ValueError):
+                stamp = str(row["created_at"])
+            plain = re.sub(r"<[^>]+>", " ", str(snapshot.get("full_description") or snapshot.get("description") or ""))
+            plain = re.sub(r"\s+", " ", html.unescape(plain)).strip()
+            preview = plain[:150] + ("…" if len(plain) > 150 else "")
+            source_label = {"autosave": "Автосохранение", "manual": "Ручное сохранение", "restore": "Восстановление"}.get(row["source"], "Сохранение")
+            cards.append(
+                f'''<article class="revision-row"><div><b>{esc(snapshot.get("title") or "Без названия")}</b><small>{esc(stamp)} · {source_label}</small>{f'<p>{esc(preview)}</p>' if preview else ''}</div><form method="post" action="{self.url('/learning/material/action')}" onsubmit="return confirm('Восстановить эту версию? Текущее состояние останется в истории.')"><input type="hidden" name="action" value="{esc(action)}"><input type="hidden" name="revision_id" value="{row['id']}">{hidden_fields}<button class="secondary">Восстановить</button></form></article>'''
+            )
+        body = "".join(cards) or '<p class="empty-note">История появится после первого сохранения.</p>'
+        return f'''<details class="history-panel"><summary>История изменений <span>{len(cards)}</span></summary><p class="hint">Храним последние 50 отличающихся версий.</p><div class="revision-list">{body}</div></details>'''
 
     def categories_options(self, categories, selected=None):
         return "".join(
@@ -285,6 +359,23 @@ class LearningAdmin:
                 )).fetchone()
                 if not linked:
                     raise web.HTTPNotFound(text="Лонгрид курса не найден")
+            history = ""
+            if material:
+                history_hidden = f'<input type="hidden" name="id" value="{material["id"]}">'
+                if is_course_material:
+                    history_hidden += (
+                        '<input type="hidden" name="course_material" value="1">'
+                        f'<input type="hidden" name="return_course" value="{return_course_id}">'
+                        f'<input type="hidden" name="return_lesson" value="{return_lesson_id}">'
+                        f'<input type="hidden" name="return_block" value="{return_block_id}">'
+                    )
+                history = await self.revision_history_html(
+                    db,
+                    "material",
+                    int(material["id"]),
+                    action="material_revision_restore",
+                    hidden_fields=history_hidden,
+                )
         finally:
             await db.close()
 
@@ -342,13 +433,14 @@ class LearningAdmin:
         compatibility_inputs = '''<span hidden id="cover-label"></span><img hidden id="cover-preview" alt=""><input hidden id="cover-input" type="file"><span hidden id="attachment-label"></span><input hidden id="attachment-input" type="file">''' if is_course_material else ""
         upload_label = "Медиа лонгрида" if is_course_material else "Обложка материала"
 
-        return web.Response(text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title} — Nastaunik</title><script defer src="/mini-app/static/admin_uploads.js?v=2"></script><script defer src="/mini-app/static/admin_material.js?v=10"></script><style>
+        return web.Response(text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title} — Nastaunik</title><script defer src="/mini-app/static/admin_uploads.js?v=2"></script><script defer src="/mini-app/static/admin_autosave.js?v=1"></script><script defer src="/mini-app/static/admin_material.js?v=11"></script><style>
         :root{{--bg:#f7f5f2;--paper:#fff;--ink:#292421;--muted:#817873;--line:#e7e0da;--accent:#c56349;--soft:#f3ece7}}
+        .save-state.is-error{{color:#a44439}}.history-panel{{margin:14px 0;padding:18px;border:1px solid var(--line);border-radius:18px;background:var(--paper)}}.history-panel>summary{{display:flex;justify-content:space-between;gap:8px;cursor:pointer;font-weight:800}}.history-panel>summary span{{color:var(--muted);font-size:12px}}.revision-list{{display:grid;gap:8px;margin-top:12px}}.revision-row{{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:12px;border-radius:11px;background:var(--soft)}}.revision-row b,.revision-row small{{display:block}}.revision-row small{{color:var(--muted);font-size:10px}}.revision-row p{{color:var(--muted);font-size:11px}}
         *{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,sans-serif}}main{{max-width:900px;margin:auto;padding:24px 20px 80px}}a{{color:inherit}}h1{{font:700 36px Georgia,serif;margin:0}}h2{{font-size:21px;margin:0 0 6px}}p{{margin:4px 0}}.topbar{{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:22px}}.top-actions,.actions{{display:flex;align-items:center;gap:9px;flex-wrap:wrap}}button,.button{{border:0;border-radius:11px;padding:11px 16px;background:var(--accent);color:white;font:700 14px system-ui;cursor:pointer;text-decoration:none}}.secondary{{background:var(--soft);color:var(--ink)}}.danger{{background:transparent;color:#a44439}}.card{{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:24px;margin:14px 0}}.course-context{{display:flex;align-items:flex-start;gap:14px;margin:0 0 18px;padding:16px 18px;border:1px solid #dfd0c6;border-radius:16px;background:#f3ece7}}.course-context>span{{flex:none;padding:5px 9px;border-radius:999px;background:var(--accent);color:#fff;font-size:11px;font-weight:850;letter-spacing:.03em;text-transform:uppercase}}.course-context b{{font-size:15px}}.course-context p{{color:var(--muted);font-size:13px}}label.field{{display:block;margin:18px 0 0;color:var(--muted);font-size:13px}}input,textarea{{width:100%;margin-top:6px;border:1px solid var(--line);border-radius:11px;padding:12px 13px;background:#fff;font:inherit;color:var(--ink)}}textarea{{resize:vertical;min-height:92px}}.title-input{{font-size:20px;font-weight:700}}.toolbar{{display:flex;gap:5px;flex-wrap:wrap;padding:7px;background:var(--soft);border-radius:11px 11px 0 0;margin-top:7px}}.toolbar button{{padding:7px 11px;background:transparent;color:var(--ink)}}.toolbar button:hover{{background:#fff}}.toolbar .media-button{{background:var(--accent);color:#fff}}.toolbar .youtube-button{{background:#292421;color:#fff}}.editor{{min-height:330px;border:1px solid var(--line);border-top:0;border-radius:0 0 11px 11px;padding:18px;font-size:17px;line-height:1.7;outline:none}}.editor:empty:before{{content:attr(data-placeholder);color:#aaa}}.editor figure.inline-media{{position:relative;margin:22px 0;padding:8px;border:1px solid transparent;border-radius:12px;cursor:grab}}.editor figure.inline-media:hover{{border-color:var(--line);background:var(--soft)}}.editor figure.inline-media:before{{content:'⠿ Перетащите, чтобы изменить место';display:block;color:var(--muted);font-size:12px;margin-bottom:6px}}.editor figure img,.editor figure video{{display:block;max-width:100%;max-height:520px;border-radius:10px;margin:auto}}.editor figure iframe{{display:block;width:100%;max-width:100%;aspect-ratio:16/9;border:0;border-radius:10px;margin:auto}}.editor figcaption{{color:var(--muted);font-size:14px;text-align:center;padding:7px;outline:none}}.hint,.empty-note{{font-size:13px;color:var(--muted)}}.tag-list{{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}}.tag-wrap{{display:inline-flex;align-items:center;border:1px solid color-mix(in srgb,var(--tag) 50%,white);background:color-mix(in srgb,var(--tag) 12%,white);border-radius:999px;overflow:hidden}}.tag-wrap input{{display:none}}.tag-wrap label{{padding:7px 7px 7px 12px;cursor:pointer;color:var(--ink)}}.tag-wrap:has(input:checked){{background:var(--tag);border-color:var(--tag)}}.tag-wrap:has(input:checked) label{{color:#fff}}.tag-edit{{padding:6px 10px 6px 4px;background:transparent;color:inherit;opacity:0}}.tag-wrap:hover .tag-edit{{opacity:.75}}.add-tag{{border:1px dashed var(--line);background:white;color:var(--accent);border-radius:999px;padding:7px 13px}}.cover{{display:flex;align-items:center;gap:18px}}.cover-current{{display:grid;gap:6px;justify-items:start}}.cover-current[hidden]{{display:none}}.cover-preview{{width:180px;aspect-ratio:16/9;object-fit:cover;border-radius:12px;background:var(--soft)}}.cover-remove{{padding:6px 3px;font-size:12px}}.drop{{flex:1;border:1px dashed #c9b9ae;border-radius:13px;padding:18px;text-align:center;cursor:pointer}}.drop input{{display:none}}.section-head{{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:16px}}.asset-card{{display:grid;grid-template-columns:42px 1fr auto;gap:13px;align-items:start;border-top:1px solid var(--line);padding:16px 0}}.asset-icon{{width:42px;height:42px;border-radius:10px;background:var(--soft);display:grid;place-items:center;font-size:20px}}.asset-fields input,.asset-fields textarea{{margin:0 0 8px}}.asset-fields textarea{{min-height:68px}}.asset-actions{{display:flex;flex-direction:column;gap:5px}}.new-asset{{background:var(--soft);border-radius:14px;padding:17px;margin-top:12px}}.new-asset-grid{{display:grid;grid-template-columns:150px 1fr;gap:10px}}select{{width:100%;border:1px solid var(--line);border-radius:11px;padding:12px;background:#fff;font:inherit}}dialog{{border:0;border-radius:18px;padding:24px;box-shadow:0 20px 80px #0003;width:min(420px,90vw)}}dialog::backdrop{{background:#211b1888}}.toast{{background:#e1f2e4;color:#26613b;border-radius:11px;padding:11px 15px;margin-bottom:14px}}.save-state{{font-size:13px;color:var(--muted)}}.loading-overlay{{position:fixed;z-index:20;inset:0;background:#261d19aa;display:none;place-items:center;padding:20px}}.loading-overlay.active{{display:grid}}.loading-box{{width:min(390px,90vw);background:#fff;border-radius:18px;padding:24px;text-align:center;box-shadow:0 24px 80px #0004}}.spinner{{width:38px;height:38px;border:4px solid var(--soft);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 14px}}.progress{{height:8px;background:var(--soft);border-radius:99px;overflow:hidden;margin-top:14px}}.progress i{{display:block;width:8%;height:100%;background:var(--accent);transition:width .2s}}@keyframes spin{{to{{transform:rotate(360deg)}}}}@media(max-width:650px){{.topbar,.cover,.course-context{{align-items:stretch;flex-direction:column}}.asset-card{{grid-template-columns:42px 1fr}}.asset-actions{{grid-column:2;flex-direction:row}}.new-asset-grid{{grid-template-columns:1fr}}.top-actions{{width:100%}}.top-actions>button{{flex:1}}}}
-        </style></head><body><div id="loading-overlay" class="loading-overlay"><div class="loading-box"><div class="spinner"></div><b id="loading-text">Загрузка…</b><div class="progress"><i id="loading-progress"></i></div></div></div><script>window.addEventListener('DOMContentLoaded',()=>{{const overlay=document.getElementById('loading-overlay'),loadingText=document.getElementById('loading-text'),loadingProgress=document.getElementById('loading-progress'),mainForm=document.getElementById('article-form'),uploadUrl=mainForm.getAttribute('action');function showLoading(text,percent=8){{loadingText.textContent=text;loadingProgress.style.width=percent+'%';overlay.classList.add('active')}}function hideLoading(){{overlay.classList.remove('active')}}function uploadWithProgress(data,text){{return new Promise((resolve,reject)=>{{const xhr=new XMLHttpRequest();xhr.open('POST',uploadUrl);showLoading(text);xhr.upload.onprogress=e=>{{if(e.lengthComputable){{const p=Math.max(8,Math.round(e.loaded/e.total*100));loadingProgress.style.width=p+'%';loadingText.textContent=text+' '+p+'%'}}}};xhr.upload.onload=()=>{{loadingProgress.style.width='100%';loadingText.textContent='Сохраняем загруженный файл…'}};xhr.onload=()=>xhr.status>=200&&xhr.status<300?resolve(JSON.parse(xhr.responseText)):reject();xhr.onerror=reject;xhr.send(data)}})}}const coverInput=document.getElementById('cover-input'),coverPreview=document.getElementById('cover-preview'),coverLabel=document.getElementById('cover-label');coverInput.onchange=()=>{{const file=coverInput.files[0];if(!file)return;coverPreview.src=URL.createObjectURL(file);coverPreview.style.visibility='visible';coverLabel.textContent='Выбрано: '+file.name}};mainForm.addEventListener('submit',()=>showLoading(coverInput.files.length?'Загружаем обложку…':'Сохраняем материал…',coverInput.files.length?8:35));const attachmentInput=document.getElementById('attachment-input'),attachmentLabel=document.getElementById('attachment-label');attachmentInput.onchange=()=>{{if(attachmentInput.files[0])attachmentLabel.textContent='Выбрано: '+attachmentInput.files[0].name}};document.querySelectorAll('.upload-form').forEach(f=>f.addEventListener('submit',()=>showLoading('Загружаем дополнительный материал…')));const picker=document.getElementById('inline-media-file');picker.onchange=async()=>{{const file=picker.files[0];if(!file)return;const data=new FormData();data.append('action','inline_upload');data.append('inline_file',file);let item;try{{item=await uploadWithProgress(data,'Загружаем в статью…')}}catch(e){{hideLoading();document.getElementById('save-state').textContent='Не удалось загрузить';return}}hideLoading();const ed=document.getElementById('content-editor'),fig=document.createElement('figure'),media=document.createElement(item.kind==='video'?'video':'img');fig.className='inline-media';fig.draggable=true;media.src=item.url;if(item.kind==='video'){{media.controls=true;media.preload='metadata';media.playsInline=true}}fig.append(media);if(savedRange){{savedRange.deleteContents();savedRange.insertNode(fig)}}else ed.appendChild(fig);const p=document.createElement('p');p.innerHTML='<br>';fig.after(p);wireMedia(fig.parentElement);sync();picker.value='';document.getElementById('save-state').textContent=item.waiting_save?'Видео загружено — нажмите «Сохранить»':'Медиа добавлено';if(!item.waiting_save)autosave()}}}});</script><main><a href="{return_url}">{return_label}</a><form id="article-form" data-id="{m["id"]}" data-return-url="{return_url}" data-media-upload data-upload-label="{upload_label}" method="post" action="{self.url('/learning/material/action')}" enctype="multipart/form-data">{return_fields}<input type="hidden" name="action" value="material_save"><input type="hidden" name="editor" value="1"><input type="hidden" name="id" value="{m["id"]}"><div class="topbar"><h1>{title}</h1><div class="top-actions"><span id="save-state" class="save-state"></span><button>Сохранить</button>{existing_controls}</div></div>{saved}{course_context}
+        </style></head><body><div id="loading-overlay" class="loading-overlay"><div class="loading-box"><div class="spinner"></div><b id="loading-text">Загрузка…</b><div class="progress"><i id="loading-progress"></i></div></div></div><script>window.addEventListener('DOMContentLoaded',()=>{{const overlay=document.getElementById('loading-overlay'),loadingText=document.getElementById('loading-text'),loadingProgress=document.getElementById('loading-progress'),mainForm=document.getElementById('article-form'),uploadUrl=mainForm.getAttribute('action');function showLoading(text,percent=8){{loadingText.textContent=text;loadingProgress.style.width=percent+'%';overlay.classList.add('active')}}function hideLoading(){{overlay.classList.remove('active')}}function uploadWithProgress(data,text){{return new Promise((resolve,reject)=>{{const xhr=new XMLHttpRequest();xhr.open('POST',uploadUrl);showLoading(text);xhr.upload.onprogress=e=>{{if(e.lengthComputable){{const p=Math.max(8,Math.round(e.loaded/e.total*100));loadingProgress.style.width=p+'%';loadingText.textContent=text+' '+p+'%'}}}};xhr.upload.onload=()=>{{loadingProgress.style.width='100%';loadingText.textContent='Сохраняем загруженный файл…'}};xhr.onload=()=>xhr.status>=200&&xhr.status<300?resolve(JSON.parse(xhr.responseText)):reject();xhr.onerror=reject;xhr.send(data)}})}}const coverInput=document.getElementById('cover-input'),coverPreview=document.getElementById('cover-preview'),coverLabel=document.getElementById('cover-label');coverInput.onchange=()=>{{const file=coverInput.files[0];if(!file)return;coverPreview.src=URL.createObjectURL(file);coverPreview.style.visibility='visible';coverLabel.textContent='Выбрано: '+file.name}};mainForm.addEventListener('submit',()=>showLoading(coverInput.files.length?'Загружаем обложку…':'Сохраняем материал…',coverInput.files.length?8:35));const attachmentInput=document.getElementById('attachment-input'),attachmentLabel=document.getElementById('attachment-label');attachmentInput.onchange=()=>{{if(attachmentInput.files[0])attachmentLabel.textContent='Выбрано: '+attachmentInput.files[0].name}};document.querySelectorAll('.upload-form').forEach(f=>f.addEventListener('submit',()=>showLoading('Загружаем дополнительный материал…')));const picker=document.getElementById('inline-media-file');picker.onchange=async()=>{{const file=picker.files[0];if(!file)return;const data=new FormData();data.append('action','inline_upload');data.append('inline_file',file);let item;try{{item=await uploadWithProgress(data,'Загружаем в статью…')}}catch(e){{hideLoading();document.getElementById('save-state').textContent='Не удалось загрузить';return}}hideLoading();const ed=document.getElementById('content-editor'),fig=document.createElement('figure'),media=document.createElement(item.kind==='video'?'video':'img');fig.className='inline-media';fig.draggable=true;media.src=item.url;if(item.kind==='video'){{media.controls=true;media.preload='metadata';media.playsInline=true}}fig.append(media);if(savedRange){{savedRange.deleteContents();savedRange.insertNode(fig)}}else ed.appendChild(fig);const p=document.createElement('p');p.innerHTML='<br>';fig.after(p);wireMedia(fig.parentElement);sync();picker.value='';document.getElementById('save-state').textContent=item.waiting_save?'Видео загружено — нажмите «Сохранить»':'Медиа добавлено';if(!item.waiting_save)autosave()}}}});</script><main><a href="{return_url}">{return_label}</a><form id="article-form" data-autosave data-autosave-id="{m["id"]}" data-id="{m["id"]}" data-return-url="{return_url}" data-media-upload data-upload-label="{upload_label}" method="post" action="{self.url('/learning/material/action')}" enctype="multipart/form-data">{return_fields}<input type="hidden" name="action" value="material_save"><input type="hidden" name="editor" value="1"><input type="hidden" name="id" value="{m["id"]}"><div class="topbar"><h1>{title}</h1><div class="top-actions"><span id="save-state" class="save-state" data-save-state></span><button>Сохранить</button>{existing_controls}</div></div>{saved}{course_context}
         <section class="card"><h2>{details_heading}</h2><p class="hint">{details_hint}</p><label class="field">Название<input class="title-input" name="title" value="{esc(m["title"])}" placeholder="Введите название" required autofocus></label><label class="field">Краткое описание<textarea name="short_description" placeholder="{short_description_placeholder}">{esc(m["short_description"] or "")}</textarea></label>{free_access}</section>
         <section class="card"><h2>{article_heading}</h2><p class="hint">Можно вставить готовый пост или ссылку YouTube — абзацы, медиа и форматирование сохранятся.</p><div class="toolbar"><button type="button" data-cmd="undo" title="Отменить">↶</button><button type="button" data-cmd="redo" title="Повторить">↷</button><button type="button" data-cmd="bold"><b>Ж</b></button><button type="button" data-cmd="italic"><i>К</i></button><button type="button" data-cmd="formatBlock" data-value="h2">Заголовок</button><button type="button" data-cmd="formatBlock" data-value="blockquote">Цитата</button><button type="button" data-cmd="insertUnorderedList">• Список</button><button type="button" data-cmd="insertOrderedList">1. Список</button><button type="button" id="add-divider">Разделитель</button><button type="button" id="add-link">Ссылка</button><button type="button" class="media-button" id="insert-media">＋ Фото/видео</button><button type="button" class="youtube-button" id="insert-youtube">▶ YouTube</button><input id="inline-media-file" type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.mp4" hidden><button type="button" data-cmd="removeFormat">Очистить</button></div><div id="content-editor" class="editor" contenteditable="true" data-placeholder="Вставьте пост, ссылку YouTube или начните писать…">{clean_rich_text(m["full_description"] or "")}</div><textarea id="content-source" name="full_description" hidden></textarea></section>
-        {tags_section}{cover_section}</form>{files_section}{compatibility_inputs}{dialogs}
+        {tags_section}{cover_section}</form>{files_section}{history}{compatibility_inputs}{dialogs}
         <script>const form=document.getElementById('article-form'),editor=document.getElementById('content-editor'),source=document.getElementById('content-source'),state=document.getElementById('save-state'),tagList=document.querySelector('.tag-list'),actionUrl=form.getAttribute('action');function sync(){{const clean=editor.cloneNode(true);clean.querySelectorAll('.media-remove').forEach(button=>button.remove());source.value=clean.innerHTML}}document.querySelectorAll('[data-cmd]').forEach(b=>b.onclick=()=>{{editor.focus();document.execCommand(b.dataset.cmd,false,b.dataset.value||null);sync()}});document.getElementById('add-link').onclick=()=>{{const url=prompt('Вставьте ссылку');if(url)document.execCommand('createLink',false,url);sync()}};sync();form.addEventListener('submit',sync);let timer;function autosave(){{if(!form.dataset.id)return;sync();state.textContent='Сохраняем…';const data=new FormData(form);data.delete('cover_file');data.append('autosave','1');fetch(actionUrl,{{method:'POST',body:data}}).then(r=>r.ok?r.json():Promise.reject()).then(()=>state.textContent='Сохранено').catch(()=>state.textContent='Не удалось сохранить')}}editor.addEventListener('input',()=>{{clearTimeout(timer);timer=setTimeout(autosave,1000)}});document.querySelectorAll('.tag-modal-form').forEach(tf=>tf.addEventListener('submit',async e=>{{e.preventDefault();const r=await fetch(tf.getAttribute('action'),{{method:'POST',body:new FormData(tf)}});if(!r.ok)return alert('Не удалось сохранить тег');const t=await r.json();let wrap=document.getElementById('tag-'+t.id)?.closest('.tag-wrap');if(wrap){{wrap.style.setProperty('--tag',t.color);wrap.querySelector('label').textContent=t.name}}else{{document.querySelector('.empty-note')?.remove();wrap=document.createElement('span');wrap.className='tag-wrap';wrap.style.setProperty('--tag',t.color);const input=document.createElement('input');input.type='checkbox';input.name='tag_ids';input.value=t.id;input.id='tag-'+t.id;input.checked=true;const label=document.createElement('label');label.htmlFor=input.id;label.textContent=t.name;wrap.append(input,label);tagList.append(wrap)}}tf.closest('dialog').close()}}));document.querySelectorAll('.tag-delete').forEach(btn=>btn.onclick=async()=>{{if(!confirm('Удалить этот тег? Он исчезнет у всех материалов.'))return;const data=new FormData();data.append('action','tag_delete');data.append('ajax','1');data.append('id',btn.dataset.id);const r=await fetch(actionUrl,{{method:'POST',body:data}});if(!r.ok)return alert('Не удалось удалить тег');document.getElementById('tag-'+btn.dataset.id)?.closest('.tag-wrap')?.remove();btn.closest('dialog').close()}});const deleteMaterial=document.getElementById('delete-material');if(deleteMaterial)deleteMaterial.onclick=async()=>{{if(!confirm('Удалить материал без возможности восстановления?'))return;const data=new FormData();data.append('action','material_delete');data.append('ajax','1');data.append('id',deleteMaterial.dataset.id);const r=await fetch(actionUrl,{{method:'POST',body:data}});if(r.ok)location.href='{self.url('/learning')}';else alert('Не удалось удалить материал')}};let savedRange=null,draggedMedia=null;function rememberRange(){{const s=getSelection();if(s.rangeCount&&editor.contains(s.anchorNode))savedRange=s.getRangeAt(0).cloneRange()}}editor.addEventListener('mouseup',rememberRange);editor.addEventListener('keyup',rememberRange);const mediaPicker=document.getElementById('inline-media-file');document.getElementById('insert-media').onclick=()=>{{rememberRange();mediaPicker.click()}};function wireMedia(root=editor){{root.querySelectorAll('figure.inline-media').forEach(fig=>{{fig.draggable=true;fig.ondragstart=()=>draggedMedia=fig}})}}editor.ondragover=e=>e.preventDefault();editor.ondrop=e=>{{if(!draggedMedia)return;e.preventDefault();const range=document.caretRangeFromPoint?.(e.clientX,e.clientY);if(range)range.insertNode(draggedMedia);else editor.appendChild(draggedMedia);draggedMedia=null;sync();autosave()}};wireMedia();mediaPicker.onchange=async()=>{{const file=mediaPicker.files[0];if(!file)return;state.textContent='Загружаем медиа…';const data=new FormData();data.append('action','inline_upload');data.append('inline_file',file);const r=await fetch(actionUrl,{{method:'POST',body:data}});if(!r.ok){{state.textContent='Не удалось загрузить';return}}const item=await r.json(),fig=document.createElement('figure'),media=document.createElement(item.kind==='video'?'video':'img');fig.className='inline-media';fig.draggable=true;media.src=item.url;if(item.kind==='video')media.controls=true;fig.append(media);if(savedRange){{savedRange.deleteContents();savedRange.insertNode(fig)}}else editor.appendChild(fig);const p=document.createElement('p');p.innerHTML='<br>';fig.after(p);wireMedia(fig.parentElement);sync();mediaPicker.value='';state.textContent='Медиа добавлено';autosave()}};</script></main></body></html>''', content_type="text/html")
 
     async def editor(self, request: web.Request) -> web.Response:
@@ -908,6 +1000,10 @@ class LearningAdmin:
                 inline_result = {"ok": True, "url": url, "kind": "video" if is_video else "image", "waiting_save": is_video}
             elif action == "material_save":
                 item_id = int(form.get("id") or 0)
+                autosave = form.get("autosave") == "1"
+                old_snapshot = await self.material_snapshot(db, item_id) if item_id else None
+                if old_snapshot:
+                    await self.save_revision(db, "material", item_id, old_snapshot, "manual")
                 values = (
                     str(form.get("title") or "").strip(),
                     str(form.get("short_description") or "").strip() or None,
@@ -928,12 +1024,57 @@ class LearningAdmin:
                 for tag_id in form.getall("tag_ids", []):
                     if str(tag_id).isdigit():
                         await db.execute("INSERT OR IGNORE INTO mini_app_material_tags(material_id,tag_id) VALUES(?,?)", (item_id, int(tag_id)))
-                if form.get("remove_cover") == "1" and form.get("autosave") != "1":
+                if form.get("remove_cover") == "1" and not autosave:
                     await self.remove_cover(db, item_id)
-                await self.save_cover(db, item_id, form.get("cover_file"))
-                if form.get("autosave") != "1":
+                if not autosave:
+                    await self.save_cover(db, item_id, form.get("cover_file"))
                     await self.activate_saved_videos(db, values[2])
+                new_snapshot = await self.material_snapshot(db, item_id)
+                if new_snapshot:
+                    await self.save_revision(
+                        db, "material", item_id, new_snapshot, "autosave" if autosave else "manual"
+                    )
                 editor_id = item_id if form.get("editor") == "1" else None
+            elif action == "material_revision_restore":
+                item_id = int(form.get("id") or 0)
+                revision_id = int(form.get("revision_id") or 0)
+                revision = await (await db.execute(
+                    """SELECT snapshot_json FROM mini_app_admin_revisions
+                       WHERE id=? AND entity_type='material' AND entity_id=?""",
+                    (revision_id, item_id),
+                )).fetchone()
+                if not revision:
+                    raise web.HTTPNotFound(text="Версия не найдена")
+                current = await self.material_snapshot(db, item_id)
+                if not current:
+                    raise web.HTTPNotFound(text="Материал не найден")
+                await self.save_revision(db, "material", item_id, current, "manual")
+                snapshot = json.loads(revision["snapshot_json"])
+                await db.execute(
+                    """UPDATE mini_app_materials SET title=?,short_description=?,full_description=?,
+                           is_free=?,library_visible=?,status=?,updated_at=? WHERE id=?""",
+                    (
+                        str(snapshot.get("title") or "Без названия"),
+                        snapshot.get("short_description"),
+                        snapshot.get("full_description"),
+                        1 if snapshot.get("is_free") else 0,
+                        1 if snapshot.get("library_visible", 1) else 0,
+                        str(snapshot.get("status") or "published"),
+                        now,
+                        item_id,
+                    ),
+                )
+                await db.execute("DELETE FROM mini_app_material_tags WHERE material_id=?", (item_id,))
+                for tag_id in snapshot.get("tag_ids") or []:
+                    await db.execute(
+                        """INSERT OR IGNORE INTO mini_app_material_tags(material_id,tag_id)
+                           SELECT ?,id FROM mini_app_tags WHERE id=?""",
+                        (item_id, int(tag_id)),
+                    )
+                restored = await self.material_snapshot(db, item_id)
+                if restored:
+                    await self.save_revision(db, "material", item_id, restored, "restore")
+                editor_id = item_id
             elif action == "file_add":
                 editor_id = int(form.get("material_id") or 0)
                 if not editor_id:
@@ -988,6 +1129,7 @@ class LearningAdmin:
                     stored_names.extend(Path(url).name for url in re.findall(r'/mini-app/media/[A-Za-z0-9_.~-]+', str(material_row["full_description"] or "")))
                 await db.execute("DELETE FROM mini_app_course_blocks WHERE material_id=?", (item_id,))
                 await db.execute("DELETE FROM mini_app_materials WHERE id=?", (item_id,))
+                await db.execute("DELETE FROM mini_app_admin_revisions WHERE entity_type='material' AND entity_id=?", (item_id,))
                 for stored_name in stored_names:
                     target = self.media_dir / Path(stored_name).name
                     if target.is_file():

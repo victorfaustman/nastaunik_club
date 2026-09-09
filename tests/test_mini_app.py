@@ -49,6 +49,7 @@ class MiniAppSchemaTests(unittest.TestCase):
                         "mini_app_course_test_attempts",
                         "mini_app_course_feedback",
                         "mini_app_course_assignment_submissions",
+                        "mini_app_admin_revisions",
                     ):
                         cursor = await conn.execute(
                             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",

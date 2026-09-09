@@ -60,7 +60,7 @@ class CourseAdmin:
         return '''
         :root{--bg:#f7f5f2;--paper:#fff;--ink:#292421;--muted:#817873;--line:#e7e0da;--accent:#c56349;--soft:#f3ece7;--success:#2f7147}
         *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}main{max-width:1340px;margin:auto;padding:26px 20px 80px}a{color:inherit}.admin-tabs{display:flex;gap:7px;margin:0 0 28px;padding:5px;width:max-content;border:1px solid var(--line);border-radius:13px;background:var(--paper)}.admin-tabs a{padding:8px 14px;border-radius:9px;color:var(--muted);font-weight:750;text-decoration:none}.admin-tabs a.active{background:var(--accent);color:#fff}.top,.row,.section-head,.lesson-line{display:flex;align-items:center;justify-content:space-between;gap:14px}.top{margin-bottom:22px}.top h1{margin:0;font:700 38px/1.08 Georgia,serif}.top p,.hint{color:var(--muted)}h2{margin:0 0 6px;font-size:21px}h3{margin:0;font-size:16px}.button,button{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:10px;padding:10px 15px;background:var(--accent);color:#fff;font:700 14px system-ui;cursor:pointer;text-decoration:none}.secondary{background:var(--soft);color:var(--ink)}.danger{background:#fff0ed;color:#a44439}.ghost{padding:7px 9px;background:transparent;color:var(--muted)}.panel,.course-card,.module-card,.block-card{background:var(--paper);border:1px solid var(--line);border-radius:17px;padding:20px;margin:12px 0}.course-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;align-items:center}.course-card p{margin:5px 0;color:var(--muted)}.meta{font-size:12px;color:var(--muted)}.course-workspace{display:grid;grid-template-columns:270px minmax(0,1fr);gap:18px;align-items:start}.layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px}.sticky{position:sticky;top:16px}.field{display:block;margin:15px 0;color:var(--muted);font-size:13px}input,textarea,select{width:100%;margin-top:6px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font:inherit}textarea{min-height:92px;resize:vertical}.checkbox{display:flex;gap:10px;align-items:flex-start;padding:13px;border:1px solid var(--line);border-radius:12px}.checkbox input{width:18px;height:18px;margin:2px 0}.actions,.lesson-actions,.block-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.empty{padding:30px;border:1px dashed var(--line);border-radius:14px;text-align:center;color:var(--muted)}.module-card{padding:0;overflow:hidden;scroll-margin-top:18px}.module-head{padding:17px 18px;background:var(--soft)}.module-head form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto auto;gap:8px;align-items:center}.module-head input{margin:0}.lesson-list{padding:7px 17px 13px}.lesson-line{padding:12px 0;border-bottom:1px solid var(--line)}.lesson-line:last-child{border-bottom:0}.lesson-line p{margin:3px 0 0;color:var(--muted);font-size:12px}.ungrouped{margin-bottom:18px}.add-box{padding:16px;border:1px dashed #cdbdb2;border-radius:14px;background:color-mix(in srgb,var(--soft) 55%,white)}.add-grid{display:grid;grid-template-columns:minmax(0,1fr) 220px auto;gap:9px;align-items:end}.add-grid input,.add-grid select{margin:0}.back{display:inline-block;margin-bottom:17px;color:var(--muted);text-decoration:none}.block-card{position:relative}.block-type{display:inline-flex;padding:4px 8px;border-radius:999px;background:var(--soft);color:var(--accent);font-size:11px;font-weight:800}.block-preview{margin:12px 0}.block-preview img,.block-preview video{display:block;width:100%;max-height:480px;object-fit:contain;border-radius:12px;background:#181513}.test-options{display:grid;grid-template-columns:1fr 1fr;gap:8px}.saved{margin:0 0 14px;padding:11px 14px;border-radius:11px;background:#e2f1e6;color:var(--success)}.format-hint{padding:9px 11px;border-radius:9px;background:var(--soft);color:var(--muted);font-size:12px}.course-toolbar{display:flex;gap:5px;flex-wrap:wrap;padding:7px;background:var(--soft);border-radius:11px 11px 0 0;margin-top:14px}.course-toolbar button{padding:7px 10px;background:transparent;color:var(--ink)}.course-toolbar button:hover{background:#fff}.course-toolbar .media-button{background:var(--accent);color:#fff}.course-editor{min-height:330px;border:1px solid var(--line);border-top:0;border-radius:0 0 11px 11px;padding:18px;font-size:17px;line-height:1.7;outline:none}.course-editor:empty:before{content:attr(data-placeholder);color:#aaa}.course-editor figure.inline-media{position:relative;margin:22px 0;padding:8px;border:1px solid transparent;border-radius:12px;cursor:grab}.course-editor figure.inline-media:hover{border-color:var(--line);background:var(--soft)}.course-editor figure.inline-media:before{content:'⠿ Перетащите, чтобы изменить место';display:block;color:var(--muted);font-size:12px;margin-bottom:6px}.course-editor figure img,.course-editor figure video{display:block;max-width:100%;max-height:520px;border-radius:10px;margin:auto}.media-remove{position:absolute;top:10px;right:10px;width:34px;height:34px;padding:0;border-radius:50%;background:#fff;color:#a44439;box-shadow:0 3px 14px #0003;font-size:22px}.editor-status{min-height:21px;margin-top:7px;color:var(--muted);font-size:12px}.file-drop{display:block;margin-top:14px;padding:18px;border:1px dashed #c9b9ae;border-radius:13px;text-align:center;cursor:pointer}.file-drop input{display:none}.add-block{margin:16px 0 22px;padding:20px;border:1px dashed #cdbdb2;border-radius:17px;background:var(--paper)}.lesson-blocks{display:grid;gap:12px}.lesson-blocks .block-card{margin:0}.block-kind-tabs{display:flex;gap:7px;flex-wrap:wrap;margin:13px 0}.block-kind-tabs button{background:var(--soft);color:var(--ink)}.block-kind-tabs button.active{background:var(--accent);color:#fff}.block-add-form{display:none;padding-top:3px}.block-add-form.active{display:block}.course-outline{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow:auto;margin:0;padding:12px;border:1px solid var(--line);border-radius:17px;background:var(--paper)}.outline-course{display:flex;gap:9px;align-items:center;padding:10px;border-radius:10px;text-decoration:none;font-weight:850}.outline-course.active,.outline-course:hover{background:var(--soft)}.outline-course span{color:var(--accent)}.outline-label{padding:13px 9px 5px;color:var(--muted);font-size:10px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.tree-module{margin-top:5px;border-radius:10px}.tree-module-title,.tree-lesson{display:flex;gap:7px;align-items:center;min-width:0;border-radius:9px;color:var(--ink);text-decoration:none}.tree-module-title{padding:8px 8px;font-size:13px;font-weight:800}.tree-lesson{margin:2px 0 2px 20px;padding:7px 8px;color:var(--muted);font-size:12px}.tree-module-title:hover,.tree-lesson:hover,.tree-lesson.active{background:var(--soft);color:var(--ink)}.tree-grip{flex:none;color:#b6a79d;cursor:grab}.tree-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tree-drop{min-height:8px;border-radius:7px}.tree-drop.drag-over,.tree-module-title.drag-over,.tree-lesson.drag-over{outline:2px solid var(--accent);background:var(--soft)}.outline-add{margin:8px 0 3px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.outline-add details+details{border-top:1px solid var(--line)}.outline-add summary{padding:10px 8px;cursor:pointer;color:var(--accent);font-size:12px;font-weight:800}.outline-add form{padding:0 7px 11px}.outline-add .field{margin:8px 0}.outline-add input,.outline-add select{padding:8px;font-size:12px}.outline-add button{width:100%;padding:8px;font-size:12px}
-        .outline-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:9px 0 12px}.outline-actions button{width:100%;padding:8px 6px;background:var(--soft);color:var(--accent);font-size:11px}.outline-actions button:hover{background:var(--accent);color:#fff}.tree-item{position:relative;min-width:0}.tree-item>.tree-lesson,.tree-item>.tree-module-title{padding-right:34px}.tree-delete{position:absolute;z-index:3;right:3px;top:50%;transform:translateY(-50%);opacity:0;pointer-events:none}.tree-item:hover>.tree-delete,.tree-item:focus-within>.tree-delete{opacity:1;pointer-events:auto}.tree-delete button{width:27px;height:27px;padding:0;border-radius:8px;background:#fff0ed;color:#a44439;font-size:16px}.analytics-panel summary,.panel>summary{cursor:pointer}.analytics-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0}.analytics-cards div{display:grid;padding:13px;border-radius:12px;background:var(--soft)}.analytics-cards b{font-size:24px}.analytics-cards span{color:var(--muted);font-size:11px}.analytics-table{overflow:auto;margin-top:10px}.analytics-table table{width:100%;border-collapse:collapse}.analytics-table th,.analytics-table td{padding:9px;border-bottom:1px solid var(--line);text-align:left;font-size:12px}.review-admin-list{display:grid;gap:9px;margin-top:15px}.review-admin-card{padding:14px;border:1px solid var(--line);border-radius:13px}.review-admin-card>div{display:flex;justify-content:space-between;gap:8px}.review-admin-card p{white-space:pre-wrap}.review-status{padding:3px 7px;border-radius:999px;background:var(--soft);font-size:10px}.review-status.approved{background:#e2f1e6;color:var(--success)}.review-status.rejected{background:#fff0ed;color:#a44439}.course-upload-overlay{position:fixed;z-index:50;inset:0;display:none;place-items:center;background:#261d19aa;padding:20px}.course-upload-overlay.active{display:grid}.course-upload-box{width:min(390px,90vw);padding:24px;border-radius:18px;background:#fff;text-align:center;box-shadow:0 24px 80px #0004}.course-upload-track{height:8px;margin-top:14px;border-radius:99px;overflow:hidden;background:var(--soft)}.course-upload-track i{display:block;width:8%;height:100%;background:var(--accent);transition:width .2s}
+        .outline-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:9px 0 12px}.outline-actions button{width:100%;padding:8px 6px;background:var(--soft);color:var(--accent);font-size:11px}.outline-actions button:hover{background:var(--accent);color:#fff}.tree-item{position:relative;min-width:0}.tree-item>.tree-lesson,.tree-item>.tree-module-title{padding-right:34px}.tree-delete{position:absolute;z-index:3;right:3px;top:50%;transform:translateY(-50%);opacity:0;pointer-events:none}.tree-item:hover>.tree-delete,.tree-item:focus-within>.tree-delete{opacity:1;pointer-events:auto}.tree-delete button{width:27px;height:27px;padding:0;border-radius:8px;background:#fff0ed;color:#a44439;font-size:16px}.analytics-panel summary,.panel>summary{cursor:pointer}.analytics-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0}.analytics-cards div{display:grid;padding:13px;border-radius:12px;background:var(--soft)}.analytics-cards b{font-size:24px}.analytics-cards span{color:var(--muted);font-size:11px}.analytics-table{overflow:auto;margin-top:10px}.analytics-table table{width:100%;border-collapse:collapse}.analytics-table th,.analytics-table td{padding:9px;border-bottom:1px solid var(--line);text-align:left;font-size:12px}.review-admin-list{display:grid;gap:9px;margin-top:15px}.review-admin-card{padding:14px;border:1px solid var(--line);border-radius:13px}.review-admin-card>div{display:flex;justify-content:space-between;gap:8px}.review-admin-card p{white-space:pre-wrap}.review-status{padding:3px 7px;border-radius:999px;background:var(--soft);font-size:10px}.review-status.approved{background:#e2f1e6;color:var(--success)}.review-status.rejected{background:#fff0ed;color:#a44439}.autosave-state{display:block;min-height:20px;margin-top:10px;color:var(--muted);font-size:12px}.autosave-state.is-error{color:#a44439}.history-panel{margin:12px 0;padding:16px;border:1px solid var(--line);border-radius:17px;background:var(--paper)}.history-panel>summary{display:flex;justify-content:space-between;gap:8px;cursor:pointer;font-weight:800}.history-panel>summary span{color:var(--muted);font-size:12px}.revision-list{display:grid;gap:8px;margin-top:12px}.revision-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:11px;border-radius:11px;background:var(--soft)}.revision-row b,.revision-row small{display:block}.revision-row small{color:var(--muted);font-size:10px}.revision-row p{margin:4px 0 0;color:var(--muted);font-size:11px}.revision-row button{padding:7px 9px;font-size:11px}.course-upload-overlay{position:fixed;z-index:50;inset:0;display:none;place-items:center;background:#261d19aa;padding:20px}.course-upload-overlay.active{display:grid}.course-upload-box{width:min(390px,90vw);padding:24px;border-radius:18px;background:#fff;text-align:center;box-shadow:0 24px 80px #0004}.course-upload-track{height:8px;margin-top:14px;border-radius:99px;overflow:hidden;background:var(--soft)}.course-upload-track i{display:block;width:8%;height:100%;background:var(--accent);transition:width .2s}
         @media(max-width:1000px){.course-workspace{grid-template-columns:230px minmax(0,1fr)}.layout{grid-template-columns:1fr}.sticky{position:static}}
         @media(max-width:760px){.course-workspace{grid-template-columns:1fr}.course-outline{position:static;max-height:none}.top,.course-card{align-items:stretch;grid-template-columns:1fr;flex-direction:column}.course-card{display:flex}.module-head form,.add-grid{grid-template-columns:1fr}.lesson-line{align-items:flex-start}.test-options{grid-template-columns:1fr}.analytics-cards{grid-template-columns:1fr 1fr}.top h1{font-size:32px}.admin-tabs{width:100%}.admin-tabs a{flex:1;text-align:center}}
         '''
@@ -127,6 +127,24 @@ class CourseAdmin:
           }});
         }});
         }})();</script>'''
+
+    async def course_snapshot(self, db, course_id: int) -> dict | None:
+        row = await (await db.execute(
+            """SELECT title,description,cover_url,sequential_access,completion_title,completion_text,
+                      completion_recommendation,next_course_id,is_visible,status
+               FROM mini_app_courses WHERE id=?""",
+            (course_id,),
+        )).fetchone()
+        return dict(row) if row else None
+
+    async def lesson_snapshot(self, db, lesson_id: int, course_id: int) -> dict | None:
+        row = await (await db.execute(
+            """SELECT title,description,module_id,is_required,previous_button_label,
+                      next_button_label,finish_button_label
+               FROM mini_app_course_units WHERE id=? AND course_id=?""",
+            (lesson_id, course_id),
+        )).fetchone()
+        return dict(row) if row else None
 
     async def analytics_html(self, db, course_id: int, lessons) -> str:
         states = await self.owner.rows(
@@ -270,6 +288,13 @@ class CourseAdmin:
             )
             analytics = await self.analytics_html(db, int(course["id"]), lessons) if course else ""
             feedback = await self.feedback_html(db, int(course["id"])) if course else ""
+            history = await self.owner.revision_history_html(
+                db,
+                "course",
+                int(course["id"]),
+                action="course_revision_restore",
+                hidden_fields=f'<input type="hidden" name="course_id" value="{course["id"]}">',
+            ) if course else ""
         finally:
             await db.close()
         c = course or {"id": "", "title": "", "description": "", "outcome": "", "duration_label": "", "cover_url": "", "is_visible": 0, "sequential_access": 0, "completion_title": "", "completion_text": "", "completion_recommendation": "", "next_course_id": None}
@@ -300,7 +325,7 @@ class CourseAdmin:
         if course:
             preview_buttons = f'''<div class="panel"><h2>Предпросмотр</h2><p class="hint">Откроется точная версия Mini App без записи прогресса.</p><div class="actions"><a class="button secondary" target="_blank" href="/mini-app/preview?course={c['id']}&amp;mode=paid">Как оплаченный</a><a class="button secondary" target="_blank" href="/mini-app/preview?course={c['id']}&amp;mode=unpaid">Как неоплаченный</a></div></div>'''
         return web.Response(
-            text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(c["title"] or "Новый курс")} — Nastaunik</title><script defer src="/mini-app/static/admin_uploads.js?v=2"></script><style>{self.styles()}</style></head><body><main>{self.tabs("courses")}<a class="back" href="{self.courses_url()}">← Все курсы</a>{'<div class="saved">Изменения сохранены</div>' if request.query.get('saved') else ''}<div class="top"><div><h1>{esc(c["title"] or "Новый курс")}</h1><p>Модули необязательны — уроки можно добавлять сразу.</p></div></div><div class="course-workspace">{self.course_outline(c, modules, lessons)}<div class="layout"><div><section class="panel"><h2>Программа курса</h2><p class="hint">Выберите урок слева, чтобы открыть его. Структуру можно менять перетаскиванием.</p>{program}</section>{analytics}{feedback}</div><aside><form class="panel sticky" data-media-upload data-upload-label="Обложка курса" method="post" action="{self.action_url}" enctype="multipart/form-data"><input type="hidden" name="action" value="course_save"><input type="hidden" name="course_id" value="{c["id"]}"><h2>О курсе</h2><label class="field">Название<input name="title" value="{esc(c["title"])}" required autofocus></label><label class="field">Краткое описание<textarea name="description">{esc(c["description"] or "")}</textarea></label><label class="field">Обложка 16:9<input type="file" name="cover_file" accept=".jpg,.jpeg,.png,.webp"></label>{f'<img src="{esc(c["cover_url"])}" alt="" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:11px">' if c["cover_url"] else ''}<label class="checkbox"><input type="checkbox" name="sequential_access" value="1" {"checked" if c["sequential_access"] else ""}><span><b>Последовательное прохождение</b><br><span class="hint">Следующий урок откроется после завершения предыдущего.</span></span></label><div style="margin-top:20px;padding-top:17px;border-top:1px solid var(--line)"><h3>Экран завершения</h3><label class="field">Заголовок<input name="completion_title" value="{esc(c["completion_title"] or "")}" placeholder="Курс завершён"></label><label class="field">Поздравление<textarea name="completion_text" placeholder="Все обязательные уроки пройдены…">{esc(c["completion_text"] or "")}</textarea></label><label class="field">Что делать дальше<textarea name="completion_recommendation" placeholder="Рекомендация участнику">{esc(c["completion_recommendation"] or "")}</textarea></label><label class="field">Следующий курс<select name="next_course_id">{next_course_options}</select></label></div><label class="checkbox"><input type="checkbox" name="is_visible" value="1" {"checked" if c["is_visible"] else ""}><span><b>Опубликовать курс в Mini App</b><br><span class="hint">После сохранения курс станет доступен участникам клуба.</span></span></label><div class="actions" style="margin-top:15px"><button>Сохранить курс</button></div></form>{preview_buttons}</aside></div></div>{self.tree_script(c["id"]) if course else ""}</main></body></html>''',
+            text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(c["title"] or "Новый курс")} — Nastaunik</title><script defer src="/mini-app/static/admin_uploads.js?v=2"></script><script defer src="/mini-app/static/admin_autosave.js?v=1"></script><style>{self.styles()}</style></head><body><main>{self.tabs("courses")}<a class="back" href="{self.courses_url()}">← Все курсы</a>{'<div class="saved">Изменения сохранены</div>' if request.query.get('saved') else ''}<div class="top"><div><h1>{esc(c["title"] or "Новый курс")}</h1><p>Модули необязательны — уроки можно добавлять сразу.</p></div></div><div class="course-workspace">{self.course_outline(c, modules, lessons)}<div class="layout"><div><section class="panel"><h2>Программа курса</h2><p class="hint">Выберите урок слева, чтобы открыть его. Структуру можно менять перетаскиванием.</p>{program}</section>{analytics}{feedback}</div><aside><form class="panel sticky" data-autosave data-autosave-id="{c["id"]}" data-media-upload data-upload-label="Обложка курса" method="post" action="{self.action_url}" enctype="multipart/form-data"><input type="hidden" name="action" value="course_save"><input type="hidden" name="course_id" value="{c["id"]}"><h2>О курсе</h2><label class="field">Название<input name="title" value="{esc(c["title"])}" required autofocus></label><label class="field">Краткое описание<textarea name="description">{esc(c["description"] or "")}</textarea></label><label class="field">Обложка 16:9<input type="file" name="cover_file" accept=".jpg,.jpeg,.png,.webp"></label>{f'<img src="{esc(c["cover_url"])}" alt="" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:11px">' if c["cover_url"] else ''}<label class="checkbox"><input type="checkbox" name="sequential_access" value="1" {"checked" if c["sequential_access"] else ""}><span><b>Последовательное прохождение</b><br><span class="hint">Следующий урок откроется после завершения предыдущего.</span></span></label><div style="margin-top:20px;padding-top:17px;border-top:1px solid var(--line)"><h3>Экран завершения</h3><label class="field">Заголовок<input name="completion_title" value="{esc(c["completion_title"] or "")}" placeholder="Курс завершён"></label><label class="field">Поздравление<textarea name="completion_text" placeholder="Все обязательные уроки пройдены…">{esc(c["completion_text"] or "")}</textarea></label><label class="field">Что делать дальше<textarea name="completion_recommendation" placeholder="Рекомендация участнику">{esc(c["completion_recommendation"] or "")}</textarea></label><label class="field">Следующий курс<select name="next_course_id">{next_course_options}</select></label></div><label class="checkbox"><input type="checkbox" name="is_visible" value="1" {"checked" if c["is_visible"] else ""}><span><b>Опубликовать курс в Mini App</b><br><span class="hint">После сохранения курс станет доступен участникам клуба.</span></span></label><span class="autosave-state" data-save-state>{'Изменения сохраняются автоматически' if course else 'Сначала сохраните новый курс'}</span><div class="actions" style="margin-top:8px"><button>Сохранить курс</button></div></form>{preview_buttons}{history}</aside></div></div>{self.tree_script(c["id"]) if course else ""}</main></body></html>''',
             content_type="text/html",
         )
 
@@ -323,12 +348,19 @@ class CourseAdmin:
                    WHERE b.lesson_id=? ORDER BY b.sort_order,b.id""",
                 (lesson_id,),
             )
+            history = await self.owner.revision_history_html(
+                db,
+                "lesson",
+                lesson_id,
+                action="course_revision_restore",
+                hidden_fields=f'<input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}">',
+            )
         finally:
             await db.close()
         module_options = '<option value="">Без модуля</option>' + "".join(f'<option value="{row["id"]}" {"selected" if row["id"] == lesson["module_id"] else ""}>{esc(row["title"])}</option>' for row in modules)
         block_html = "".join(self.block_card(block, lesson_id, course_id) for block in blocks) or '<div class="empty">Созданные блоки урока появятся здесь.</div>'
         return web.Response(
-            text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(lesson["title"])} — Nastaunik</title><script defer src="/mini-app/static/admin_uploads.js?v=2"></script><script defer src="/mini-app/static/admin_course.js?v=3"></script><style>{self.styles()}</style></head><body><main>{self.tabs("courses")}<a class="back" href="{self.course_url(course_id)}">← {esc(course["title"] if course else "Курс")}</a>{'<div class="saved">Изменения сохранены</div>' if request.query.get('saved') else ''}<div class="top"><div><h1>{esc(lesson["title"])}</h1><p>Соберите урок из блоков в нужном порядке.</p></div></div><div class="course-workspace">{self.course_outline({"id": course_id, "title": course["title"] if course else "Курс"}, modules, lessons, lesson_id)}<div class="layout"><div><section><div class="section-head"><div><h2>Содержание урока</h2><div class="hint">Видео, текст, изображения и тесты можно сочетать.</div></div></div>{self.add_block_form(lesson_id, course_id)}<div class="lesson-blocks">{block_html}</div></section></div><aside><form class="panel sticky" method="post" action="{self.action_url}"><input type="hidden" name="action" value="course_lesson_save"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><h2>Настройки урока</h2><label class="field">Название<input name="title" value="{esc(lesson["title"])}" required></label><label class="field">Краткое описание<textarea name="description">{esc(lesson["description"] or "")}</textarea></label><label class="field">Раздел<select name="module_id">{module_options}</select></label><label class="checkbox"><input type="checkbox" name="is_required" value="1" {"checked" if lesson["is_required"] else ""}><span><b>Обязательный урок</b><br><span class="hint">Учитывается в прогрессе курса.</span></span></label><div style="margin-top:20px;padding-top:17px;border-top:1px solid var(--line)"><h3>Кнопки перехода</h3><p class="hint" style="margin:4px 0 10px;font-size:12px">Оставьте поле пустым, чтобы использовать стандартную надпись.</p><label class="field">Назад<input name="previous_button_label" maxlength="80" value="{esc(lesson["previous_button_label"] or "")}" placeholder="← Предыдущий"></label><label class="field">К следующему уроку<input name="next_button_label" maxlength="80" value="{esc(lesson["next_button_label"] or "")}" placeholder="Завершить урок и продолжить"></label><label class="field">На последнем уроке<input name="finish_button_label" maxlength="80" value="{esc(lesson["finish_button_label"] or "")}" placeholder="Завершить курс"></label></div><button style="margin-top:15px">Сохранить урок</button></form></aside></div></div>{self.tree_script(course_id)}</main></body></html>''',
+            text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(lesson["title"])} — Nastaunik</title><script defer src="/mini-app/static/admin_uploads.js?v=2"></script><script defer src="/mini-app/static/admin_course.js?v=3"></script><script defer src="/mini-app/static/admin_autosave.js?v=1"></script><style>{self.styles()}</style></head><body><main>{self.tabs("courses")}<a class="back" href="{self.course_url(course_id)}">← {esc(course["title"] if course else "Курс")}</a>{'<div class="saved">Изменения сохранены</div>' if request.query.get('saved') else ''}<div class="top"><div><h1>{esc(lesson["title"])}</h1><p>Соберите урок из блоков в нужном порядке.</p></div></div><div class="course-workspace">{self.course_outline({"id": course_id, "title": course["title"] if course else "Курс"}, modules, lessons, lesson_id)}<div class="layout"><div><section><div class="section-head"><div><h2>Содержание урока</h2><div class="hint">Видео, текст, изображения и тесты можно сочетать.</div></div></div>{self.add_block_form(lesson_id, course_id)}<div class="lesson-blocks">{block_html}</div></section></div><aside><form class="panel sticky" data-autosave data-autosave-id="{lesson_id}" method="post" action="{self.action_url}"><input type="hidden" name="action" value="course_lesson_save"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><h2>Настройки урока</h2><label class="field">Название<input name="title" value="{esc(lesson["title"])}" required></label><label class="field">Краткое описание<textarea name="description">{esc(lesson["description"] or "")}</textarea></label><label class="field">Раздел<select name="module_id">{module_options}</select></label><label class="checkbox"><input type="checkbox" name="is_required" value="1" {"checked" if lesson["is_required"] else ""}><span><b>Обязательный урок</b><br><span class="hint">Учитывается в прогрессе курса.</span></span></label><div style="margin-top:20px;padding-top:17px;border-top:1px solid var(--line)"><h3>Кнопки перехода</h3><p class="hint" style="margin:4px 0 10px;font-size:12px">Оставьте поле пустым, чтобы использовать стандартную надпись.</p><label class="field">Назад<input name="previous_button_label" maxlength="80" value="{esc(lesson["previous_button_label"] or "")}" placeholder="← Предыдущий"></label><label class="field">К следующему уроку<input name="next_button_label" maxlength="80" value="{esc(lesson["next_button_label"] or "")}" placeholder="Завершить урок и продолжить"></label><label class="field">На последнем уроке<input name="finish_button_label" maxlength="80" value="{esc(lesson["finish_button_label"] or "")}" placeholder="Завершить курс"></label></div><span class="autosave-state" data-save-state>Изменения сохраняются автоматически</span><button style="margin-top:8px">Сохранить урок</button></form>{history}</aside></div></div>{self.tree_script(course_id)}</main></body></html>''',
             content_type="text/html",
         )
 
@@ -438,6 +470,10 @@ class CourseAdmin:
                 title = str(form.get("title") or "").strip()
                 if not title:
                     raise web.HTTPBadRequest(text="Введите название курса")
+                autosave = form.get("autosave") == "1"
+                old_snapshot = await self.course_snapshot(db, course_id) if course_id else None
+                if old_snapshot:
+                    await self.owner.save_revision(db, "course", course_id, old_snapshot, "manual")
                 visible = 1 if form.get("is_visible") == "1" else 0
                 next_course_id = int(form.get("next_course_id") or 0) or None
                 if next_course_id == course_id:
@@ -473,7 +509,86 @@ class CourseAdmin:
                         (*values[:-1], now, now),
                     )
                     course_id = int(cur.lastrowid)
-                await self.save_course_cover(db, course_id, form.get("cover_file"))
+                if not autosave:
+                    await self.save_course_cover(db, course_id, form.get("cover_file"))
+                new_snapshot = await self.course_snapshot(db, course_id)
+                if new_snapshot:
+                    await self.owner.save_revision(
+                        db, "course", course_id, new_snapshot, "autosave" if autosave else "manual"
+                    )
+            elif action == "course_revision_restore":
+                revision_id = int(form.get("revision_id") or 0)
+                revision = await (await db.execute(
+                    "SELECT entity_type,entity_id,snapshot_json FROM mini_app_admin_revisions WHERE id=?",
+                    (revision_id,),
+                )).fetchone()
+                if not revision or revision["entity_type"] not in {"course", "lesson"}:
+                    raise web.HTTPNotFound(text="Версия не найдена")
+                snapshot = json.loads(revision["snapshot_json"])
+                if revision["entity_type"] == "course":
+                    if int(revision["entity_id"]) != course_id:
+                        raise web.HTTPBadRequest(text="Версия относится к другому курсу")
+                    current = await self.course_snapshot(db, course_id)
+                    if not current:
+                        raise web.HTTPNotFound(text="Курс не найден")
+                    await self.owner.save_revision(db, "course", course_id, current, "manual")
+                    await db.execute(
+                        """UPDATE mini_app_courses SET title=?,description=?,cover_url=?,sequential_access=?,
+                               completion_title=?,completion_text=?,completion_recommendation=?,next_course_id=?,
+                               is_visible=?,status=?,updated_at=? WHERE id=?""",
+                        (
+                            str(snapshot.get("title") or "Без названия"),
+                            snapshot.get("description"),
+                            snapshot.get("cover_url"),
+                            1 if snapshot.get("sequential_access") else 0,
+                            snapshot.get("completion_title"),
+                            snapshot.get("completion_text"),
+                            snapshot.get("completion_recommendation"),
+                            snapshot.get("next_course_id"),
+                            1 if snapshot.get("is_visible") else 0,
+                            str(snapshot.get("status") or "draft"),
+                            now,
+                            course_id,
+                        ),
+                    )
+                    restored = await self.course_snapshot(db, course_id)
+                    if restored:
+                        await self.owner.save_revision(db, "course", course_id, restored, "restore")
+                else:
+                    if int(revision["entity_id"]) != lesson_id:
+                        raise web.HTTPBadRequest(text="Версия относится к другому уроку")
+                    current = await self.lesson_snapshot(db, lesson_id, course_id)
+                    if not current:
+                        raise web.HTTPNotFound(text="Урок не найден")
+                    await self.owner.save_revision(db, "lesson", lesson_id, current, "manual")
+                    module_id = snapshot.get("module_id")
+                    if module_id:
+                        module = await (await db.execute(
+                            "SELECT id FROM mini_app_course_modules WHERE id=? AND course_id=?",
+                            (int(module_id), course_id),
+                        )).fetchone()
+                        if not module:
+                            module_id = None
+                    await db.execute(
+                        """UPDATE mini_app_course_units SET title=?,description=?,module_id=?,is_required=?,
+                               previous_button_label=?,next_button_label=?,finish_button_label=?,updated_at=?
+                           WHERE id=? AND course_id=?""",
+                        (
+                            str(snapshot.get("title") or "Урок"),
+                            snapshot.get("description"),
+                            module_id,
+                            1 if snapshot.get("is_required") else 0,
+                            snapshot.get("previous_button_label"),
+                            snapshot.get("next_button_label"),
+                            snapshot.get("finish_button_label"),
+                            now,
+                            lesson_id,
+                            course_id,
+                        ),
+                    )
+                    restored = await self.lesson_snapshot(db, lesson_id, course_id)
+                    if restored:
+                        await self.owner.save_revision(db, "lesson", lesson_id, restored, "restore")
             elif action == "course_review_moderate":
                 feedback_id = int(form.get("feedback_id") or 0)
                 status = str(form.get("review_status") or "")
@@ -491,9 +606,17 @@ class CourseAdmin:
                     raise web.HTTPBadRequest(text="Неизвестный статус отзыва")
             elif action == "course_delete":
                 if course_id:
+                    lesson_revision_ids = [
+                        int(row["id"]) for row in await self.owner.rows(
+                            db, "SELECT id FROM mini_app_course_units WHERE course_id=?", (course_id,)
+                        )
+                    ]
                     rows = await self.owner.rows(db, "SELECT stored_name,material_id FROM mini_app_course_blocks b JOIN mini_app_course_units l ON l.id=b.lesson_id WHERE l.course_id=?", (course_id,))
                     cover = await (await db.execute("SELECT cover_url FROM mini_app_courses WHERE id=?", (course_id,))).fetchone()
                     await db.execute("DELETE FROM mini_app_courses WHERE id=?", (course_id,))
+                    await db.execute("DELETE FROM mini_app_admin_revisions WHERE entity_type='course' AND entity_id=?", (course_id,))
+                    for revision_lesson_id in lesson_revision_ids:
+                        await db.execute("DELETE FROM mini_app_admin_revisions WHERE entity_type='lesson' AND entity_id=?", (revision_lesson_id,))
                     for material_id_to_delete in {row["material_id"] for row in rows if row["material_id"]}:
                         await db.execute("DELETE FROM mini_app_materials WHERE id=? AND library_visible=0", (material_id_to_delete,))
                     for row in rows:
@@ -540,6 +663,11 @@ class CourseAdmin:
                 cur = await db.execute("INSERT INTO mini_app_course_units(course_id,module_id,title,is_required,sort_order,created_at,updated_at) VALUES(?,?,?,1,?,?,?)", (course_id, module_id, title, order, now, now))
                 lesson_id = int(cur.lastrowid)
             elif action == "course_lesson_save":
+                autosave = form.get("autosave") == "1"
+                old_snapshot = await self.lesson_snapshot(db, lesson_id, course_id)
+                if not old_snapshot:
+                    raise web.HTTPNotFound(text="Урок не найден")
+                await self.owner.save_revision(db, "lesson", lesson_id, old_snapshot, "manual")
                 module_id = int(form.get("module_id") or 0) or None
                 await db.execute(
                     """UPDATE mini_app_course_units SET
@@ -559,6 +687,11 @@ class CourseAdmin:
                         course_id,
                     ),
                 )
+                new_snapshot = await self.lesson_snapshot(db, lesson_id, course_id)
+                if new_snapshot:
+                    await self.owner.save_revision(
+                        db, "lesson", lesson_id, new_snapshot, "autosave" if autosave else "manual"
+                    )
             elif action == "course_lesson_delete":
                 linked_materials = await self.owner.rows(
                     db,
@@ -566,6 +699,7 @@ class CourseAdmin:
                     (lesson_id,),
                 )
                 await db.execute("DELETE FROM mini_app_course_units WHERE id=? AND course_id=?", (lesson_id, course_id))
+                await db.execute("DELETE FROM mini_app_admin_revisions WHERE entity_type='lesson' AND entity_id=?", (lesson_id,))
                 for linked in linked_materials:
                     await db.execute("DELETE FROM mini_app_materials WHERE id=? AND library_visible=0", (linked["material_id"],))
             elif action == "course_tree_move":
@@ -719,10 +853,14 @@ class CourseAdmin:
             return web.json_response(inline_result or {"ok": False}, status=200 if inline_result else 400)
         if action == "course_tree_move" and form.get("ajax") == "1":
             return web.json_response({"ok": True})
+        if action in {"course_save", "course_lesson_save"} and form.get("ajax") == "1":
+            return web.json_response({"ok": True, "saved_at": now})
         if action == "course_block_save" and form.get("ajax") == "1":
             return web.json_response({"ok": True})
         if action == "course_block_add" and material_id:
             raise web.HTTPSeeOther(location=self.course_material_url(material_id, course_id, lesson_id, block_id))
+        if action == "course_revision_restore" and lesson_id:
+            raise web.HTTPSeeOther(location=self.lesson_url(lesson_id, course_id, saved=1))
         if action == "course_lesson_add" or action.startswith("course_block_") or action == "course_lesson_save":
             raise web.HTTPSeeOther(location=self.lesson_url(lesson_id, course_id, saved=1))
         raise web.HTTPSeeOther(location=self.course_url(course_id, saved=1))
