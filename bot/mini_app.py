@@ -134,16 +134,27 @@ class MiniApp:
             "is_lifetime_free": bool(record.is_lifetime_free) if record else False,
         }
         test_mode_available = int(tg_user["id"]) in self.test_mode_ids
-        test_mode = test_mode_available and request.headers.get("X-Nastaunik-Test-Mode") == "1"
+        requested_test_mode = request.headers.get("X-Nastaunik-Test-Mode", "").strip().lower()
+        if requested_test_mode == "1":
+            requested_test_mode = "unpaid"
+        test_mode = requested_test_mode if test_mode_available and requested_test_mode in {"unpaid", "paid"} else None
         user["test_mode_available"] = test_mode_available
         user["test_mode"] = test_mode
-        if test_mode:
+        if test_mode == "unpaid":
             user.update({
                 "state": "new",
                 "status": "new",
                 "access_end_at": None,
                 "amount_label": None,
                 "is_lifetime_free": False,
+            })
+        elif test_mode == "paid":
+            user.update({
+                "state": "active",
+                "status": "active",
+                "access_end_at": None,
+                "amount_label": None,
+                "is_lifetime_free": True,
             })
         return tg_user, record, user
 
@@ -207,7 +218,8 @@ class MiniApp:
             course_id = int(request.match_info["course_id"])
         except ValueError:
             raise web.HTTPNotFound()
-        course = await get_course(self.db, course_id, user["telegram_id"])
+        tracking_id = 0 if user.get("test_mode") else user["telegram_id"]
+        course = await get_course(self.db, course_id, tracking_id)
         if not course:
             raise web.HTTPNotFound()
         return web.json_response(course)
@@ -221,7 +233,8 @@ class MiniApp:
             lesson_id = int(request.match_info["lesson_id"])
         except ValueError:
             raise web.HTTPNotFound()
-        lesson = await get_course_lesson(self.db, course_id, lesson_id, user["telegram_id"])
+        tracking_id = 0 if user.get("test_mode") else user["telegram_id"]
+        lesson = await get_course_lesson(self.db, course_id, lesson_id, tracking_id, track=not bool(user.get("test_mode")))
         if not lesson:
             raise web.HTTPNotFound()
         return web.json_response(lesson)
@@ -235,6 +248,21 @@ class MiniApp:
             lesson_id = int(request.match_info["lesson_id"])
         except ValueError:
             raise web.HTTPNotFound()
+        if user.get("test_mode"):
+            lesson = await get_course_lesson(self.db, course_id, lesson_id, 0, track=False)
+            if not lesson:
+                raise web.HTTPNotFound()
+            return web.json_response({
+                "ok": True,
+                "lesson_id": lesson_id,
+                "next_lesson_id": lesson["next_lesson_id"],
+                "is_last": lesson["next_lesson_id"] is None,
+                "progress": lesson["course"]["progress"],
+                "completed": False,
+                "completed_count": 0,
+                "required_count": 0,
+                "test_mode": user["test_mode"],
+            })
         result = await complete_course_lesson(self.db, course_id, lesson_id, user["telegram_id"])
         if not result:
             raise web.HTTPNotFound()

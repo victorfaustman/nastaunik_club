@@ -12,14 +12,17 @@
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 Inter, system-ui, -apple-system, sans-serif; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
 button { font: inherit; }
 .shell { max-width: 720px; margin: auto; padding: 22px 18px 92px; }
-.test-mode-entry { display: flex; justify-content: flex-end; margin: -5px 0 9px; }
+.test-mode-entry { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin: -5px 0 9px; }
+.test-mode-entry > span { color: var(--muted); font-size: 10px; font-weight: 750; }
 .test-mode-entry button { padding: 7px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); color: var(--muted); font-size: 11px; font-weight: 800; cursor: pointer; }
 .test-mode-entry button:hover, .test-mode-entry button:focus-visible { border-color: var(--accent); color: var(--accent-dark); outline: 0; }
 .test-mode-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -5px 0 15px; padding: 11px 12px 11px 14px; border: 1px solid #df9d73; border-radius: 16px; background: #fff1df; color: #693b2d; box-shadow: var(--shadow); }
 .test-mode-banner span { display: grid; min-width: 0; }
 .test-mode-banner b { font-size: 13px; }
 .test-mode-banner small { margin-top: 1px; color: #926451; font-size: 10px; }
-.test-mode-banner button { flex: none; padding: 7px 11px; border: 0; border-radius: 10px; background: #693b2d; color: #fff; font-size: 11px; font-weight: 800; cursor: pointer; }
+.test-mode-options { display: flex; flex: none; gap: 4px; padding: 3px; border-radius: 12px; background: #ead3c4; }
+.test-mode-banner button { flex: none; padding: 7px 9px; border: 0; border-radius: 9px; background: transparent; color: #805044; font-size: 10px; font-weight: 800; cursor: pointer; }
+.test-mode-banner button:hover, .test-mode-banner button:focus-visible, .test-mode-banner button.active { background: #693b2d; color: #fff; outline: 0; }
 .brand { font-family: Georgia, serif; font-size: 27px; letter-spacing: -.03em; }
 .mark { color: var(--accent); font-size: 25px; }
 .eyebrow { color: var(--accent-dark); font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
@@ -175,6 +178,11 @@ button { font: inherit; }
 .course-finish-stat span { color: var(--muted); font-size: 12px; }
 .course-finish .button { width: 100%; margin-top: 9px; }
 @media (max-width: 400px) {
+  .test-mode-entry { flex-wrap: wrap; }
+  .test-mode-entry > span { width: 100%; text-align: right; }
+  .test-mode-banner { align-items: stretch; flex-direction: column; }
+  .test-mode-options { width: 100%; }
+  .test-mode-options button { flex: 1 1 auto; }
   .item-thumb { width: 108px; flex-basis: 108px; }
   .material-card { gap: 11px; }
   .material-card h3 { font-size: 17px; }
@@ -200,7 +208,9 @@ button { font: inherit; }
   .reading-progress span { background: #342824e8; }
   .test-mode-banner { border-color: #8b5a43; background: #4a3026; color: #fff4ec; }
   .test-mode-banner small { color: #d8b4a2; }
-  .test-mode-banner button { background: #f0c0a8; color: #3a2119; }
+  .test-mode-options { background: #604238; }
+  .test-mode-banner button { color: #e5bda9; }
+  .test-mode-banner button:hover, .test-mode-banner button:focus-visible, .test-mode-banner button.active { background: #f0c0a8; color: #3a2119; }
   .lesson-navigation { background: #342824e8; }
   .empty-course-cover { background: linear-gradient(145deg,#503b32,#65483c); }
   .course-lesson-row.completed .lesson-number, .course-finish-mark { background: #718d78; }

@@ -72,6 +72,20 @@ class OwnerTestModeTests(unittest.TestCase):
                         ("Бесплатный материал", stamp, stamp),
                     )
                     material_id = int(cursor.lastrowid)
+                    cursor = await conn.execute(
+                        """INSERT INTO mini_app_courses(
+                               title,status,sort_order,created_at,updated_at
+                           ) VALUES(?,'published',0,?,?)""",
+                        ("Тестовый курс", stamp, stamp),
+                    )
+                    course_id = int(cursor.lastrowid)
+                    cursor = await conn.execute(
+                        """INSERT INTO mini_app_course_units(
+                               course_id,title,is_required,sort_order,created_at,updated_at
+                           ) VALUES(?,?,1,0,?,?)""",
+                        (course_id, "Урок", stamp, stamp),
+                    )
+                    lesson_id = int(cursor.lastrowid)
                     await conn.commit()
 
                 mini_app = MiniApp(database, "123:TEST", {42}, {42})
@@ -84,8 +98,10 @@ class OwnerTestModeTests(unittest.TestCase):
                 _, _, user = await mini_app.authorised(request)
                 self.assertEqual(user["state"], "new")
                 self.assertTrue(user["test_mode_available"])
-                self.assertTrue(user["test_mode"])
+                self.assertEqual(user["test_mode"], "unpaid")
                 self.assertIsNone(user["access_end_at"])
+                unpaid_payload = json.loads((await mini_app.bootstrap(request)).text)
+                self.assertEqual(unpaid_payload["courses"], [])
 
                 material = json.loads((await mini_app.material(request)).text)
                 self.assertFalse(material["viewed"])
@@ -96,6 +112,41 @@ class OwnerTestModeTests(unittest.TestCase):
                     like_count = (await (await conn.execute("SELECT COUNT(*) FROM mini_app_material_likes")).fetchone())[0]
                 self.assertEqual(view_count, 0)
                 self.assertEqual(like_count, 0)
+
+                paid_request = SimpleNamespace(
+                    headers={
+                        "X-Telegram-Init-Data": init_data(),
+                        "X-Nastaunik-Test-Mode": "paid",
+                    },
+                    query={},
+                )
+                _, _, paid_user = await mini_app.authorised(paid_request)
+                self.assertEqual(paid_user["test_mode"], "paid")
+                self.assertEqual(paid_user["state"], "active")
+                self.assertTrue(paid_user["is_lifetime_free"])
+                self.assertIsNone(paid_user["access_end_at"])
+                paid_payload = json.loads((await mini_app.bootstrap(paid_request)).text)
+                self.assertEqual(len(paid_payload["courses"]), 1)
+                self.assertEqual(paid_payload["courses"][0]["title"], "Тестовый курс")
+
+                paid_course_request = SimpleNamespace(
+                    headers=paid_request.headers,
+                    query={},
+                    match_info={"course_id": str(course_id), "lesson_id": str(lesson_id)},
+                )
+                lesson = json.loads((await mini_app.course_lesson(paid_course_request)).text)
+                self.assertEqual(lesson["title"], "Урок")
+                completion = json.loads((await mini_app.course_lesson_complete(paid_course_request)).text)
+                self.assertEqual(completion["test_mode"], "paid")
+                async with database.connect() as conn:
+                    course_progress = (await (await conn.execute(
+                        "SELECT COUNT(*) FROM mini_app_course_unit_progress"
+                    )).fetchone())[0]
+                    course_state = (await (await conn.execute(
+                        "SELECT COUNT(*) FROM mini_app_course_user_state"
+                    )).fetchone())[0]
+                self.assertEqual(course_progress, 0)
+                self.assertEqual(course_state, 0)
 
                 outsider_request = SimpleNamespace(
                     headers={
