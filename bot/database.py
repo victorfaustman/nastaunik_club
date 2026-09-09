@@ -308,6 +308,9 @@ class Database:
                     title TEXT NOT NULL,
                     description TEXT,
                     is_required INTEGER NOT NULL DEFAULT 1,
+                    previous_button_label TEXT,
+                    next_button_label TEXT,
+                    finish_button_label TEXT,
                     sort_order INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
@@ -522,6 +525,9 @@ class Database:
             await self._ensure_column(db, "mini_app_courses", "outcome", "TEXT")
             await self._ensure_column(db, "mini_app_courses", "duration_label", "TEXT")
             await self._ensure_column(db, "mini_app_courses", "is_visible", "INTEGER NOT NULL DEFAULT 0")
+            await self._ensure_column(db, "mini_app_course_units", "previous_button_label", "TEXT")
+            await self._ensure_column(db, "mini_app_course_units", "next_button_label", "TEXT")
+            await self._ensure_column(db, "mini_app_course_units", "finish_button_label", "TEXT")
             await self._ensure_column(db, "mini_app_course_blocks", "material_id", "INTEGER")
             legacy_longreads = await (await db.execute(
                 """SELECT b.id,b.title,b.content,b.description,b.created_at,l.title lesson_title

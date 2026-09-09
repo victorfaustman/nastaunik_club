@@ -375,6 +375,11 @@ class LearningCatalogCardTests(unittest.TestCase):
                             stamp,
                         ),
                     )
+                    await conn.execute(
+                        """UPDATE mini_app_course_units SET previous_button_label=?,
+                               next_button_label=?,finish_button_label=? WHERE id=?""",
+                        ("Вернуться", "Продолжить обучение", "Готово", lesson_ids[0]),
+                    )
                     await conn.commit()
 
                 payload = await get_bootstrap(database, {"telegram_id": 42, "state": "active"})
@@ -389,6 +394,9 @@ class LearningCatalogCardTests(unittest.TestCase):
                 self.assertEqual(lesson["position"], 1)
                 self.assertEqual(lesson["next_lesson_id"], lesson_ids[1])
                 self.assertEqual(lesson["blocks"][0]["content"], "<p>Текст урока</p>")
+                self.assertEqual(lesson["previous_button_label"], "Вернуться")
+                self.assertEqual(lesson["next_button_label"], "Продолжить обучение")
+                self.assertEqual(lesson["finish_button_label"], "Готово")
                 opened_course = await get_course(database, course_id, 42)
                 self.assertTrue(opened_course["started"])
                 self.assertEqual(opened_course["resume_lesson_id"], lesson_ids[0])

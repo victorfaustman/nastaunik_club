@@ -66,6 +66,27 @@ class CourseAdminBuilderTests(unittest.TestCase):
 
                 with self.assertRaises(web.HTTPSeeOther):
                     await admin.course_admin.action(None, MultiDict([
+                        ("action", "course_lesson_save"),
+                        ("course_id", str(course["id"])),
+                        ("lesson_id", str(lesson["id"])),
+                        ("module_id", str(module["id"])),
+                        ("title", "Первый урок"),
+                        ("description", "Описание урока"),
+                        ("is_required", "1"),
+                        ("previous_button_label", "Вернуться назад"),
+                        ("next_button_label", "Перейти к практике"),
+                        ("finish_button_label", "Закончить обучение"),
+                    ]))
+                async with Database(database_path).connect() as db:
+                    saved_lesson = await (await db.execute(
+                        "SELECT * FROM mini_app_course_units WHERE id=?", (lesson["id"],)
+                    )).fetchone()
+                self.assertEqual(saved_lesson["previous_button_label"], "Вернуться назад")
+                self.assertEqual(saved_lesson["next_button_label"], "Перейти к практике")
+                self.assertEqual(saved_lesson["finish_button_label"], "Закончить обучение")
+
+                with self.assertRaises(web.HTTPSeeOther):
+                    await admin.course_admin.action(None, MultiDict([
                         ("action", "course_module_add"),
                         ("course_id", str(course["id"])),
                         ("title", "Практика"),
@@ -186,6 +207,8 @@ class CourseAdminBuilderTests(unittest.TestCase):
                 self.assertIn("Создать курс", index_html)
                 self.assertNotIn("Уроки без модулей", course_html)
                 self.assertIn('class="course-outline"', course_html)
+                self.assertIn("Кнопки перехода", lesson_html)
+                self.assertIn("Перейти к практике", lesson_html)
                 self.assertIn("Перетаскивайте уроки и модули", course_html)
                 self.assertIn('data-tree-kind="module"', course_html)
                 self.assertIn('admin_uploads.js?v=2', course_html)
