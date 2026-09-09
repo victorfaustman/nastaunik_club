@@ -294,7 +294,9 @@ class ClubAdminWebApp:
 
     @web.middleware
     async def auth_middleware(self, request: web.Request, handler):
-        if request.path == "/health" or request.path.startswith("/mini-app/"):
+        if request.path == "/health" or (
+            request.path.startswith("/mini-app/") and request.path != "/mini-app/preview"
+        ):
             return await handler(request)
         if not self.settings.password:
             return web.Response(text="CLUB_ADMIN_PASSWORD is not configured", status=503)

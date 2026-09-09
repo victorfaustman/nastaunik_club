@@ -324,7 +324,13 @@ async def _completed_course_units(conn, course_id: int, telegram_id: int) -> set
 
 async def get_course(db: Database, course_id: int, telegram_id: int) -> dict[str, Any] | None:
     async with db.connect() as conn:
-        cur = await conn.execute("SELECT * FROM mini_app_courses WHERE id=? AND status='published'", (course_id,))
+        cur = await conn.execute(
+            """SELECT c.*,n.title AS next_course_title
+               FROM mini_app_courses c
+               LEFT JOIN mini_app_courses n ON n.id=c.next_course_id AND n.status='published'
+               WHERE c.id=? AND c.status='published'""",
+            (course_id,),
+        )
         course = await cur.fetchone()
         if not course:
             return None
@@ -354,31 +360,70 @@ async def get_course(db: Database, course_id: int, telegram_id: int) -> dict[str
         result["started"] = bool(state or completed)
         result["resume_lesson_id"] = resume_lesson_id
         result["lesson_count"] = len(lessons)
-        result["lessons"] = [
-            {
+        previous_lesson_incomplete = False
+        result["lessons"] = []
+        for index, lesson in enumerate(lessons):
+            lesson_completed = lesson["id"] in completed
+            result["lessons"].append({
                 **lesson,
                 "position": index + 1,
-                "completed": lesson["id"] in completed,
-            }
-            for index, lesson in enumerate(lessons)
-        ]
+                "completed": lesson_completed,
+                "locked": bool(result.get("sequential_access") and previous_lesson_incomplete),
+            })
+            if not lesson_completed:
+                previous_lesson_incomplete = True
+        if result.get("sequential_access"):
+            unlocked_ids = {lesson["id"] for lesson in result["lessons"] if not lesson["locked"]}
+            if result["resume_lesson_id"] not in unlocked_ids:
+                result["resume_lesson_id"] = next(
+                    (lesson["id"] for lesson in result["lessons"] if not lesson["locked"] and not lesson["completed"]),
+                    result["lessons"][0]["id"] if result["lessons"] else None,
+                )
+        cur = await conn.execute(
+            "SELECT COUNT(*) FROM mini_app_course_feedback WHERE course_id=? AND liked=1",
+            (course_id,),
+        )
+        result["like_count"] = int((await cur.fetchone())[0])
+        result["liked"] = False
+        result["review_status"] = None
+        if telegram_id:
+            cur = await conn.execute(
+                "SELECT liked,review_status FROM mini_app_course_feedback WHERE course_id=? AND telegram_id=?",
+                (course_id, telegram_id),
+            )
+            feedback = await cur.fetchone()
+            if feedback:
+                result["liked"] = bool(feedback["liked"])
+                result["review_status"] = feedback["review_status"] if feedback["review_status"] != "none" else None
+        cur = await conn.execute(
+            """SELECT f.review_text,u.full_name FROM mini_app_course_feedback f
+               JOIN users u ON u.telegram_id=f.telegram_id
+               WHERE f.course_id=? AND f.review_status='approved' AND f.review_text IS NOT NULL
+               ORDER BY f.updated_at DESC LIMIT 20""",
+            (course_id,),
+        )
+        result["reviews"] = [dict(row) for row in await cur.fetchall()]
         return result
 
 
 async def get_course_lesson(
-    db: Database, course_id: int, lesson_id: int, telegram_id: int, *, track: bool = True
+    db: Database,
+    course_id: int,
+    lesson_id: int,
+    telegram_id: int,
+    *,
+    track: bool = True,
+    ignore_lock: bool = False,
 ) -> dict[str, Any] | None:
+    course = await get_course(db, course_id, telegram_id)
+    if not course:
+        return None
+    lesson = next((item for item in course["lessons"] if item["id"] == lesson_id), None)
+    if not lesson or (lesson.get("locked") and not ignore_lock):
+        return None
     if track and telegram_id:
         stamp = now_iso()
         async with db.connect() as conn:
-            cur = await conn.execute(
-                """SELECT l.id FROM mini_app_course_units l
-                   JOIN mini_app_courses c ON c.id=l.course_id
-                   WHERE l.id=? AND l.course_id=? AND c.status='published'""",
-                (lesson_id, course_id),
-            )
-            if not await cur.fetchone():
-                return None
             await conn.execute(
                 """INSERT INTO mini_app_course_unit_progress(telegram_id,lesson_id,started_at)
                    VALUES(?,?,?) ON CONFLICT(telegram_id,lesson_id) DO NOTHING""",
@@ -391,12 +436,6 @@ async def get_course_lesson(
                 (telegram_id, course_id, lesson_id, stamp, stamp),
             )
             await conn.commit()
-    course = await get_course(db, course_id, telegram_id)
-    if not course:
-        return None
-    lesson = next((item for item in course["lessons"] if item["id"] == lesson_id), None)
-    if not lesson:
-        return None
     async with db.connect() as conn:
         cur = await conn.execute(
             """SELECT b.*,m.title AS material_title,m.short_description AS material_description,
@@ -415,9 +454,27 @@ async def get_course_lesson(
                 block["content"] = block.get("material_content") or block.get("content") or ""
             if block["block_type"] == "test":
                 try:
-                    block["settings"] = json.loads(block.get("settings_json") or "{}")
+                    settings = json.loads(block.get("settings_json") or "{}")
                 except (TypeError, ValueError, json.JSONDecodeError):
-                    block["settings"] = {}
+                    settings = {}
+                block["settings"] = {"options": list(settings.get("options") or [])}
+            elif block["block_type"] == "assignment":
+                try:
+                    settings = json.loads(block.get("settings_json") or "{}")
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    settings = {}
+                block["settings"] = {"response_type": settings.get("response_type") or "text"}
+                block["submission"] = None
+                if telegram_id:
+                    submission_cur = await conn.execute(
+                        """SELECT response_type,response_text,original_name,updated_at
+                           FROM mini_app_course_assignment_submissions
+                           WHERE telegram_id=? AND block_id=?""",
+                        (telegram_id, block["id"]),
+                    )
+                    submission = await submission_cur.fetchone()
+                    if submission:
+                        block["submission"] = dict(submission)
             for key in ("settings_json", "stored_name", "material_title", "material_description", "material_content"):
                 block.pop(key, None)
             blocks.append(block)
@@ -437,6 +494,10 @@ async def get_course_lesson(
 
 
 async def complete_course_lesson(db: Database, course_id: int, lesson_id: int, telegram_id: int) -> dict[str, Any] | None:
+    course = await get_course(db, course_id, telegram_id)
+    lesson = next((item for item in course["lessons"] if item["id"] == lesson_id), None) if course else None
+    if not lesson or lesson.get("locked"):
+        return None
     stamp = now_iso()
     async with db.connect() as conn:
         cur = await conn.execute(
@@ -473,6 +534,160 @@ async def complete_course_lesson(db: Database, course_id: int, lesson_id: int, t
             "next_lesson_id": next_lesson_id,
             "is_last": next_lesson_id is None,
             **progress,
+        }
+
+
+async def answer_course_test(
+    db: Database,
+    course_id: int,
+    lesson_id: int,
+    block_id: int,
+    telegram_id: int,
+    selected_option: int,
+    *,
+    record: bool = True,
+) -> dict[str, Any] | None:
+    async with db.connect() as conn:
+        cur = await conn.execute(
+            """SELECT b.settings_json FROM mini_app_course_blocks b
+               JOIN mini_app_course_units l ON l.id=b.lesson_id
+               JOIN mini_app_courses c ON c.id=l.course_id
+               WHERE b.id=? AND b.lesson_id=? AND b.block_type='test'
+                 AND l.course_id=? AND c.status='published'""",
+            (block_id, lesson_id, course_id),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        try:
+            settings = json.loads(row["settings_json"] or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            settings = {}
+        options = list(settings.get("options") or [])
+        if selected_option < 0 or selected_option >= len(options) or not str(options[selected_option]).strip():
+            return None
+        correct_option = int(settings.get("correct", 0))
+        is_correct = selected_option == correct_option
+        if record and telegram_id:
+            await conn.execute(
+                """INSERT INTO mini_app_course_test_attempts(
+                       telegram_id,block_id,selected_option,is_correct,created_at
+                   ) VALUES(?,?,?,?,?)""",
+                (telegram_id, block_id, selected_option, int(is_correct), now_iso()),
+            )
+            await conn.commit()
+        return {
+            "ok": True,
+            "correct": is_correct,
+            "selected_option": selected_option,
+            "correct_option": correct_option,
+            "explanation": str(settings.get("explanation") or "").strip(),
+            "can_retry": True,
+        }
+
+
+async def toggle_course_like(db: Database, course_id: int, telegram_id: int) -> dict[str, Any] | None:
+    stamp = now_iso()
+    async with db.connect() as conn:
+        cur = await conn.execute("SELECT id FROM mini_app_courses WHERE id=? AND status='published'", (course_id,))
+        if not await cur.fetchone():
+            return None
+        cur = await conn.execute(
+            "SELECT liked FROM mini_app_course_feedback WHERE course_id=? AND telegram_id=?",
+            (course_id, telegram_id),
+        )
+        row = await cur.fetchone()
+        liked = not bool(row["liked"]) if row else True
+        await conn.execute(
+            """INSERT INTO mini_app_course_feedback(
+                   telegram_id,course_id,liked,review_status,created_at,updated_at
+               ) VALUES(?,?,?,'none',?,?) ON CONFLICT(telegram_id,course_id) DO UPDATE SET
+                   liked=excluded.liked,updated_at=excluded.updated_at""",
+            (telegram_id, course_id, int(liked), stamp, stamp),
+        )
+        await conn.commit()
+        cur = await conn.execute(
+            "SELECT COUNT(*) FROM mini_app_course_feedback WHERE course_id=? AND liked=1",
+            (course_id,),
+        )
+        return {"ok": True, "liked": liked, "like_count": int((await cur.fetchone())[0])}
+
+
+async def submit_course_review(db: Database, course_id: int, telegram_id: int, review_text: str) -> dict[str, Any] | None:
+    review_text = review_text.strip()
+    if not review_text or len(review_text) > 2000:
+        return None
+    stamp = now_iso()
+    async with db.connect() as conn:
+        cur = await conn.execute("SELECT id FROM mini_app_courses WHERE id=? AND status='published'", (course_id,))
+        if not await cur.fetchone():
+            return None
+        await conn.execute(
+            """INSERT INTO mini_app_course_feedback(
+                   telegram_id,course_id,liked,review_text,review_status,created_at,updated_at
+               ) VALUES(?,?,0,?,'pending',?,?) ON CONFLICT(telegram_id,course_id) DO UPDATE SET
+                   review_text=excluded.review_text,review_status='pending',updated_at=excluded.updated_at""",
+            (telegram_id, course_id, review_text, stamp, stamp),
+        )
+        await conn.commit()
+        return {"ok": True, "status": "pending"}
+
+
+async def submit_course_assignment(
+    db: Database,
+    course_id: int,
+    lesson_id: int,
+    block_id: int,
+    telegram_id: int,
+    response_text: str | None,
+    stored_name: str | None,
+    original_name: str | None,
+) -> dict[str, Any] | None:
+    async with db.connect() as conn:
+        cur = await conn.execute(
+            """SELECT b.settings_json FROM mini_app_course_blocks b
+               JOIN mini_app_course_units l ON l.id=b.lesson_id
+               JOIN mini_app_courses c ON c.id=l.course_id
+               WHERE b.id=? AND b.lesson_id=? AND b.block_type='assignment'
+                 AND l.course_id=? AND c.status='published'""",
+            (block_id, lesson_id, course_id),
+        )
+        block = await cur.fetchone()
+        if not block:
+            return None
+        try:
+            settings = json.loads(block["settings_json"] or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            settings = {}
+        response_type = settings.get("response_type") or "text"
+        clean_text = (response_text or "").strip() or None
+        if response_type == "file" and not stored_name:
+            return None
+        if response_type in {"text", "link"} and not clean_text:
+            return None
+        if response_type == "link" and not clean_text.lower().startswith(("https://", "http://")):
+            return None
+        cur = await conn.execute(
+            "SELECT stored_name FROM mini_app_course_assignment_submissions WHERE telegram_id=? AND block_id=?",
+            (telegram_id, block_id),
+        )
+        old = await cur.fetchone()
+        stamp = now_iso()
+        await conn.execute(
+            """INSERT INTO mini_app_course_assignment_submissions(
+                   telegram_id,block_id,response_type,response_text,stored_name,original_name,created_at,updated_at
+               ) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(telegram_id,block_id) DO UPDATE SET
+                   response_type=excluded.response_type,response_text=excluded.response_text,
+                   stored_name=excluded.stored_name,original_name=excluded.original_name,updated_at=excluded.updated_at""",
+            (telegram_id, block_id, response_type, clean_text, stored_name, original_name, stamp, stamp),
+        )
+        await conn.commit()
+        return {
+            "ok": True,
+            "response_type": response_type,
+            "response_text": clean_text,
+            "original_name": original_name,
+            "previous_stored_name": old["stored_name"] if old else None,
         }
 
 

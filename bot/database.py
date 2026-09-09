@@ -273,10 +273,16 @@ class Database:
                     cover_url TEXT,
                     category_id INTEGER,
                     status TEXT NOT NULL DEFAULT 'draft',
+                    sequential_access INTEGER NOT NULL DEFAULT 0,
+                    completion_title TEXT,
+                    completion_text TEXT,
+                    completion_recommendation TEXT,
+                    next_course_id INTEGER,
                     sort_order INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
-                    FOREIGN KEY (category_id) REFERENCES mini_app_categories(id) ON DELETE SET NULL
+                    FOREIGN KEY (category_id) REFERENCES mini_app_categories(id) ON DELETE SET NULL,
+                    FOREIGN KEY (next_course_id) REFERENCES mini_app_courses(id) ON DELETE SET NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS mini_app_course_lessons (
@@ -405,6 +411,55 @@ class Database:
                     FOREIGN KEY (last_lesson_id) REFERENCES mini_app_course_units(id) ON DELETE SET NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS mini_app_course_test_attempts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    telegram_id INTEGER NOT NULL,
+                    block_id INTEGER NOT NULL,
+                    selected_option INTEGER NOT NULL,
+                    is_correct INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (telegram_id) REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    FOREIGN KEY (block_id) REFERENCES mini_app_course_blocks(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_mini_app_course_test_attempts_block
+                    ON mini_app_course_test_attempts(block_id, telegram_id, is_correct);
+
+                CREATE TABLE IF NOT EXISTS mini_app_course_feedback (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    telegram_id INTEGER NOT NULL,
+                    course_id INTEGER NOT NULL,
+                    liked INTEGER NOT NULL DEFAULT 0,
+                    review_text TEXT,
+                    review_status TEXT NOT NULL DEFAULT 'none',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(telegram_id, course_id),
+                    FOREIGN KEY (telegram_id) REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    FOREIGN KEY (course_id) REFERENCES mini_app_courses(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_mini_app_course_feedback_course
+                    ON mini_app_course_feedback(course_id, review_status, liked);
+
+                CREATE TABLE IF NOT EXISTS mini_app_course_assignment_submissions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    telegram_id INTEGER NOT NULL,
+                    block_id INTEGER NOT NULL,
+                    response_type TEXT NOT NULL,
+                    response_text TEXT,
+                    stored_name TEXT,
+                    original_name TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(telegram_id, block_id),
+                    FOREIGN KEY (telegram_id) REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    FOREIGN KEY (block_id) REFERENCES mini_app_course_blocks(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_mini_app_course_assignment_block
+                    ON mini_app_course_assignment_submissions(block_id, telegram_id);
+
                 CREATE TABLE IF NOT EXISTS mini_app_favorites (
                     telegram_id INTEGER NOT NULL,
                     material_id INTEGER NOT NULL,
@@ -525,6 +580,11 @@ class Database:
             await self._ensure_column(db, "mini_app_courses", "outcome", "TEXT")
             await self._ensure_column(db, "mini_app_courses", "duration_label", "TEXT")
             await self._ensure_column(db, "mini_app_courses", "is_visible", "INTEGER NOT NULL DEFAULT 0")
+            await self._ensure_column(db, "mini_app_courses", "sequential_access", "INTEGER NOT NULL DEFAULT 0")
+            await self._ensure_column(db, "mini_app_courses", "completion_title", "TEXT")
+            await self._ensure_column(db, "mini_app_courses", "completion_text", "TEXT")
+            await self._ensure_column(db, "mini_app_courses", "completion_recommendation", "TEXT")
+            await self._ensure_column(db, "mini_app_courses", "next_course_id", "INTEGER")
             await self._ensure_column(db, "mini_app_course_units", "previous_button_label", "TEXT")
             await self._ensure_column(db, "mini_app_course_units", "next_button_label", "TEXT")
             await self._ensure_column(db, "mini_app_course_units", "finish_button_label", "TEXT")

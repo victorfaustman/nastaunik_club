@@ -4,6 +4,8 @@ import hashlib
 import hmac
 import json
 import logging
+import secrets
+import shutil
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qsl
@@ -12,6 +14,7 @@ from aiohttp import web
 
 from bot.database import Database
 from bot.learning import (
+    answer_course_test,
     complete_course_lesson,
     complete_lesson,
     complete_material,
@@ -19,6 +22,9 @@ from bot.learning import (
     get_course,
     get_course_lesson,
     get_material,
+    submit_course_assignment,
+    submit_course_review,
+    toggle_course_like,
     toggle_material_like,
 )
 
@@ -89,13 +95,91 @@ class MiniApp:
         app.router.add_get("/mini-app/api/course/{course_id}", self.course)
         app.router.add_get("/mini-app/api/course/{course_id}/lesson/{lesson_id}", self.course_lesson)
         app.router.add_post("/mini-app/api/course/{course_id}/lesson/{lesson_id}/complete", self.course_lesson_complete)
+        app.router.add_post("/mini-app/api/course/{course_id}/lesson/{lesson_id}/test/{block_id}", self.course_test_answer)
+        app.router.add_post("/mini-app/api/course/{course_id}/lesson/{lesson_id}/assignment/{block_id}", self.course_assignment_submit)
+        app.router.add_post("/mini-app/api/course/{course_id}/like", self.course_like)
+        app.router.add_post("/mini-app/api/course/{course_id}/review", self.course_review)
         app.router.add_post("/mini-app/api/lesson/{lesson_id}/complete", self.lesson_complete)
 
     async def index(self, request: web.Request) -> web.StreamResponse:
         return web.FileResponse(MINI_APP_DIR / "index.html", headers={"Cache-Control": "no-store"})
 
     async def preview(self, request: web.Request) -> web.StreamResponse:
-        return web.FileResponse(MINI_APP_DIR / "index.html", headers={"Cache-Control": "no-store"})
+        mode = "unpaid" if request.query.get("mode") == "unpaid" else "paid"
+        try:
+            course_id = int(request.query.get("course") or 0)
+        except ValueError:
+            raise web.HTTPNotFound()
+        user = {
+            "telegram_id": 0,
+            "username": "preview",
+            "first_name": "участник",
+            "last_name": "",
+            "full_name": "Предпросмотр",
+            "state": "active" if mode == "paid" else "new",
+            "status": "active" if mode == "paid" else "new",
+            "access_end_at": None,
+            "amount_label": None,
+            "is_lifetime_free": mode == "paid",
+            "test_mode_available": False,
+            "test_mode": mode,
+        }
+        payload = await get_bootstrap(self.db, user)
+        preview_courses: dict[str, dict] = {}
+        preview_lessons: dict[str, dict] = {}
+        preview_test_answers: dict[str, dict] = {}
+        if mode == "paid" and course_id:
+            preview_ids = [course_id]
+            course = await get_course(self.db, course_id, 0)
+            if course and course.get("next_course_id"):
+                preview_ids.append(int(course["next_course_id"]))
+            for preview_course_id in dict.fromkeys(preview_ids):
+                preview_course = await get_course(self.db, preview_course_id, 0)
+                if not preview_course:
+                    continue
+                preview_courses[str(preview_course_id)] = preview_course
+                for lesson in preview_course["lessons"]:
+                    detail = await get_course_lesson(
+                        self.db,
+                        preview_course_id,
+                        int(lesson["id"]),
+                        0,
+                        track=False,
+                        ignore_lock=True,
+                    )
+                    if detail:
+                        preview_lessons[f"{preview_course_id}:{lesson['id']}"] = detail
+            async with self.db.connect() as conn:
+                placeholders = ",".join("?" for _ in preview_ids)
+                cur = await conn.execute(
+                    f"""SELECT b.id,b.settings_json FROM mini_app_course_blocks b
+                        JOIN mini_app_course_units l ON l.id=b.lesson_id
+                        WHERE l.course_id IN ({placeholders}) AND b.block_type='test'""",
+                    tuple(preview_ids),
+                )
+                for row in await cur.fetchall():
+                    try:
+                        settings = json.loads(row["settings_json"] or "{}")
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        settings = {}
+                    preview_test_answers[str(row["id"])] = {
+                        "correct_option": int(settings.get("correct", 0)),
+                        "explanation": str(settings.get("explanation") or ""),
+                    }
+        if mode == "unpaid":
+            payload["courses"] = []
+            payload["consultation"] = {}
+        values = {
+            "data": payload,
+            "courses": preview_courses,
+            "lessons": preview_lessons,
+            "testAnswers": preview_test_answers,
+            "courseId": course_id,
+        }
+        injected = json.dumps(values, ensure_ascii=False).replace("</", "<\\/")
+        html = (MINI_APP_DIR / "index.html").read_text(encoding="utf-8")
+        html = html.replace("</head>", f"<script>window.NASTAUNIK_PREVIEW={injected}</script></head>")
+        return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-store"})
 
     async def media(self, request: web.Request) -> web.StreamResponse:
         filename = Path(request.match_info["filename"]).name
@@ -234,7 +318,14 @@ class MiniApp:
         except ValueError:
             raise web.HTTPNotFound()
         tracking_id = 0 if user.get("test_mode") else user["telegram_id"]
-        lesson = await get_course_lesson(self.db, course_id, lesson_id, tracking_id, track=not bool(user.get("test_mode")))
+        lesson = await get_course_lesson(
+            self.db,
+            course_id,
+            lesson_id,
+            tracking_id,
+            track=not bool(user.get("test_mode")),
+            ignore_lock=bool(user.get("test_mode")),
+        )
         if not lesson:
             raise web.HTTPNotFound()
         return web.json_response(lesson)
@@ -249,7 +340,7 @@ class MiniApp:
         except ValueError:
             raise web.HTTPNotFound()
         if user.get("test_mode"):
-            lesson = await get_course_lesson(self.db, course_id, lesson_id, 0, track=False)
+            lesson = await get_course_lesson(self.db, course_id, lesson_id, 0, track=False, ignore_lock=True)
             if not lesson:
                 raise web.HTTPNotFound()
             return web.json_response({
@@ -266,6 +357,121 @@ class MiniApp:
         result = await complete_course_lesson(self.db, course_id, lesson_id, user["telegram_id"])
         if not result:
             raise web.HTTPNotFound()
+        return web.json_response(result)
+
+    async def course_test_answer(self, request: web.Request) -> web.Response:
+        _, _, user = await self.authorised(request)
+        if user["state"] != "active":
+            raise web.HTTPForbidden(text="Active membership is required")
+        try:
+            course_id = int(request.match_info["course_id"])
+            lesson_id = int(request.match_info["lesson_id"])
+            block_id = int(request.match_info["block_id"])
+            selected_option = int((await request.json()).get("selected_option"))
+        except (ValueError, TypeError, json.JSONDecodeError):
+            raise web.HTTPBadRequest(text="Выберите вариант ответа")
+        if not user.get("test_mode"):
+            lesson = await get_course_lesson(self.db, course_id, lesson_id, user["telegram_id"], track=False)
+            if not lesson:
+                raise web.HTTPForbidden(text="Сначала пройдите предыдущий урок")
+        result = await answer_course_test(
+            self.db,
+            course_id,
+            lesson_id,
+            block_id,
+            user["telegram_id"],
+            selected_option,
+            record=not bool(user.get("test_mode")),
+        )
+        if not result:
+            raise web.HTTPBadRequest(text="Не удалось проверить ответ")
+        return web.json_response(result)
+
+    async def course_like(self, request: web.Request) -> web.Response:
+        _, _, user = await self.authorised(request)
+        if user["state"] != "active":
+            raise web.HTTPForbidden(text="Active membership is required")
+        try:
+            course_id = int(request.match_info["course_id"])
+        except ValueError:
+            raise web.HTTPNotFound()
+        if user.get("test_mode"):
+            course = await get_course(self.db, course_id, 0)
+            if not course:
+                raise web.HTTPNotFound()
+            return web.json_response({"ok": True, "liked": True, "like_count": course["like_count"] + 1, "test_mode": True})
+        result = await toggle_course_like(self.db, course_id, user["telegram_id"])
+        if not result:
+            raise web.HTTPNotFound()
+        return web.json_response(result)
+
+    async def course_review(self, request: web.Request) -> web.Response:
+        _, _, user = await self.authorised(request)
+        if user["state"] != "active":
+            raise web.HTTPForbidden(text="Active membership is required")
+        try:
+            course_id = int(request.match_info["course_id"])
+            review_text = str((await request.json()).get("review_text") or "")
+        except (ValueError, TypeError, json.JSONDecodeError):
+            raise web.HTTPBadRequest(text="Введите отзыв")
+        if user.get("test_mode"):
+            return web.json_response({"ok": True, "status": "pending", "test_mode": True})
+        result = await submit_course_review(self.db, course_id, user["telegram_id"], review_text)
+        if not result:
+            raise web.HTTPBadRequest(text="Отзыв должен содержать от 1 до 2000 символов")
+        return web.json_response(result)
+
+    async def course_assignment_submit(self, request: web.Request) -> web.Response:
+        _, _, user = await self.authorised(request)
+        if user["state"] != "active":
+            raise web.HTTPForbidden(text="Active membership is required")
+        try:
+            course_id = int(request.match_info["course_id"])
+            lesson_id = int(request.match_info["lesson_id"])
+            block_id = int(request.match_info["block_id"])
+        except ValueError:
+            raise web.HTTPNotFound()
+        if not user.get("test_mode"):
+            lesson = await get_course_lesson(self.db, course_id, lesson_id, user["telegram_id"], track=False)
+            if not lesson:
+                raise web.HTTPForbidden(text="Сначала пройдите предыдущий урок")
+        form = await request.post()
+        response_text = str(form.get("response_text") or "")
+        upload = form.get("assignment_file")
+        stored_name = None
+        original_name = None
+        target = None
+        if getattr(upload, "filename", None) and getattr(upload, "file", None):
+            original_name = Path(upload.filename).name[:180]
+            extension = Path(original_name).suffix.lower()
+            if extension not in {".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".txt", ".zip", ".jpg", ".jpeg", ".png"}:
+                raise web.HTTPBadRequest(text="Неподдерживаемый формат файла")
+            MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+            stored_name = f"assignment-{secrets.token_urlsafe(18)}{extension}"
+            target = MEDIA_DIR / stored_name
+            with target.open("wb") as output:
+                shutil.copyfileobj(upload.file, output)
+        if user.get("test_mode"):
+            if target:
+                target.unlink(missing_ok=True)
+            return web.json_response({"ok": True, "status": "submitted", "original_name": original_name, "test_mode": True})
+        result = await submit_course_assignment(
+            self.db,
+            course_id,
+            lesson_id,
+            block_id,
+            user["telegram_id"],
+            response_text,
+            stored_name,
+            original_name,
+        )
+        if not result:
+            if target:
+                target.unlink(missing_ok=True)
+            raise web.HTTPBadRequest(text="Заполните ответ в выбранном формате")
+        previous = result.pop("previous_stored_name", None)
+        if previous and previous != stored_name:
+            (MEDIA_DIR / Path(previous).name).unlink(missing_ok=True)
         return web.json_response(result)
 
     async def lesson_complete(self, request: web.Request) -> web.Response:

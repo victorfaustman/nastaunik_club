@@ -45,6 +45,16 @@ class MiniAppSchemaTests(unittest.TestCase):
                     self.assertEqual((await cursor.fetchone())[0], 0)
                     cursor = await conn.execute("SELECT COUNT(*) FROM mini_app_materials")
                     self.assertEqual((await cursor.fetchone())[0], 0)
+                    for table in (
+                        "mini_app_course_test_attempts",
+                        "mini_app_course_feedback",
+                        "mini_app_course_assignment_submissions",
+                    ):
+                        cursor = await conn.execute(
+                            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
+                            (table,),
+                        )
+                        self.assertEqual((await cursor.fetchone())[0], 1)
         asyncio.run(check())
 
 
@@ -138,6 +148,18 @@ class OwnerTestModeTests(unittest.TestCase):
                 self.assertEqual(lesson["title"], "Урок")
                 completion = json.loads((await mini_app.course_lesson_complete(paid_course_request)).text)
                 self.assertEqual(completion["test_mode"], "paid")
+                preview = await mini_app.preview(SimpleNamespace(query={
+                    "course": str(course_id),
+                    "mode": "paid",
+                }))
+                self.assertIn("window.NASTAUNIK_PREVIEW=", preview.text)
+                self.assertIn("Тестовый курс", preview.text)
+                self.assertIn(f'"courseId": {course_id}', preview.text)
+                unpaid_preview = await mini_app.preview(SimpleNamespace(query={
+                    "course": str(course_id),
+                    "mode": "unpaid",
+                }))
+                self.assertIn('"state": "new"', unpaid_preview.text)
                 async with database.connect() as conn:
                     course_progress = (await (await conn.execute(
                         "SELECT COUNT(*) FROM mini_app_course_unit_progress"

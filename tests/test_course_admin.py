@@ -37,12 +37,18 @@ class CourseAdminBuilderTests(unittest.TestCase):
                         ("course_id", str(course["id"])),
                         ("title", "Новый курс"),
                         ("description", "Описание"),
+                        ("sequential_access", "1"),
+                        ("completion_title", "Вы справились"),
+                        ("completion_text", "Курс завершён"),
+                        ("completion_recommendation", "Переходите дальше"),
                         ("is_visible", "1"),
                     ]))
                 async with Database(database_path).connect() as db:
                     course = await (await db.execute("SELECT * FROM mini_app_courses")).fetchone()
                 self.assertEqual(course["status"], "published")
                 self.assertEqual(course["is_visible"], 1)
+                self.assertEqual(course["sequential_access"], 1)
+                self.assertEqual(course["completion_title"], "Вы справились")
 
                 with self.assertRaises(web.HTTPSeeOther):
                     await admin.course_admin.action(None, MultiDict([
@@ -150,6 +156,71 @@ class CourseAdminBuilderTests(unittest.TestCase):
                 self.assertEqual(course_material["library_visible"], 0)
                 self.assertNotIn("script", course_material["full_description"])
 
+                with self.assertRaises(web.HTTPSeeOther):
+                    await admin.course_admin.action(None, MultiDict([
+                        ("action", "course_block_save"),
+                        ("course_id", str(course["id"])),
+                        ("lesson_id", str(lesson["id"])),
+                        ("block_id", str(rows[1]["id"])),
+                        ("content", "Какой ответ правильный?"),
+                        ("option_0", "Да"),
+                        ("option_1", "Нет"),
+                        ("correct_option", "0"),
+                        ("explanation", "Да — правильный ответ"),
+                    ]))
+                with self.assertRaises(web.HTTPSeeOther):
+                    await admin.course_admin.action(None, MultiDict([
+                        ("action", "course_block_add"),
+                        ("course_id", str(course["id"])),
+                        ("lesson_id", str(lesson["id"])),
+                        ("block_type", "file"),
+                        ("title", "Чек-лист"),
+                        ("description", "Скачайте перед уроком"),
+                        ("block_file", SimpleNamespace(filename="checklist.pdf", file=io.BytesIO(b"pdf"))),
+                    ]))
+                with self.assertRaises(web.HTTPSeeOther):
+                    await admin.course_admin.action(None, MultiDict([
+                        ("action", "course_block_add"),
+                        ("course_id", str(course["id"])),
+                        ("lesson_id", str(lesson["id"])),
+                        ("block_type", "assignment"),
+                        ("title", "Практика"),
+                        ("content", "Пришлите ссылку"),
+                        ("response_type", "link"),
+                    ]))
+                async with Database(database_path).connect() as db:
+                    block_rows = await (await db.execute(
+                        "SELECT block_type,title,settings_json FROM mini_app_course_blocks ORDER BY sort_order"
+                    )).fetchall()
+                self.assertEqual([row["block_type"] for row in block_rows], ["longread", "test", "file", "assignment"])
+                self.assertIn("правильный ответ", block_rows[1]["settings_json"])
+                self.assertEqual(block_rows[2]["title"], "Чек-лист")
+                self.assertIn('"response_type": "link"', block_rows[3]["settings_json"])
+
+                await Database(database_path).upsert_user(77, "student", "Тестовый участник")
+                async with Database(database_path).connect() as db:
+                    cursor = await db.execute(
+                        """INSERT INTO mini_app_course_feedback(
+                               telegram_id,course_id,review_text,review_status,created_at,updated_at
+                           ) VALUES(?,?,?,'pending',datetime('now'),datetime('now'))""",
+                        (77, course["id"], "Очень полезный курс"),
+                    )
+                    feedback_id = int(cursor.lastrowid)
+                    await db.commit()
+                with self.assertRaises(web.HTTPSeeOther):
+                    await admin.course_admin.action(None, MultiDict([
+                        ("action", "course_review_moderate"),
+                        ("course_id", str(course["id"])),
+                        ("feedback_id", str(feedback_id)),
+                        ("review_status", "approved"),
+                    ]))
+                async with Database(database_path).connect() as db:
+                    moderated = await (await db.execute(
+                        "SELECT review_status FROM mini_app_course_feedback WHERE id=?",
+                        (feedback_id,),
+                    )).fetchone()
+                self.assertEqual(moderated["review_status"], "approved")
+
                 async def course_material_post():
                     return MultiDict([
                         ("action", "material_save"),
@@ -209,6 +280,12 @@ class CourseAdminBuilderTests(unittest.TestCase):
                 self.assertIn('class="course-outline"', course_html)
                 self.assertIn("Кнопки перехода", lesson_html)
                 self.assertIn("Перейти к практике", lesson_html)
+                self.assertIn("Последовательное прохождение", course_html)
+                self.assertIn("Аналитика курса", course_html)
+                self.assertIn("Как оплаченный", course_html)
+                self.assertIn("Отзывы и модерация", course_html)
+                self.assertIn("Дополнительный файл", lesson_html)
+                self.assertIn("Задание", lesson_html)
                 self.assertIn("Перетаскивайте уроки и модули", course_html)
                 self.assertIn('data-tree-kind="module"', course_html)
                 self.assertIn('admin_uploads.js?v=2', course_html)

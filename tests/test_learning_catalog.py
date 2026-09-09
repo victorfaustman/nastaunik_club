@@ -7,6 +7,7 @@ from pathlib import Path
 
 from bot.database import Database
 from bot.learning import (
+    answer_course_test,
     complete_course_lesson,
     complete_material,
     get_bootstrap,
@@ -14,6 +15,9 @@ from bot.learning import (
     get_course,
     get_course_lesson,
     get_material,
+    submit_course_assignment,
+    submit_course_review,
+    toggle_course_like,
     toggle_material_like,
 )
 from bot.learning_admin_v2 import LearningAdmin, clean_rich_text
@@ -328,9 +332,11 @@ class LearningCatalogCardTests(unittest.TestCase):
                 stamp = datetime.utcnow().isoformat(timespec="seconds")
                 async with database.connect() as conn:
                     cursor = await conn.execute(
-                        """INSERT INTO mini_app_courses(title,description,status,sort_order,created_at,updated_at)
-                           VALUES(?,?,'published',0,?,?)""",
-                        ("Практический курс", "Описание", stamp, stamp),
+                        """INSERT INTO mini_app_courses(
+                               title,description,status,sequential_access,completion_title,
+                               completion_text,completion_recommendation,sort_order,created_at,updated_at
+                           ) VALUES(?,?,'published',1,?,?,?,0,?,?)""",
+                        ("Практический курс", "Описание", "Отличная работа", "Поздравляем", "Идите дальше", stamp, stamp),
                     )
                     course_id = int(cursor.lastrowid)
                     cursor = await conn.execute(
@@ -370,10 +376,16 @@ class LearningCatalogCardTests(unittest.TestCase):
                         (
                             lesson_ids[2],
                             "Главный вопрос",
-                            '{"options":["Первый","Второй"],"correct":0}',
+                            '{"options":["Первый","Второй"],"correct":0,"explanation":"Потому что первый"}',
                             stamp,
                             stamp,
                         ),
+                    )
+                    await conn.execute(
+                        """INSERT INTO mini_app_course_blocks(
+                               lesson_id,block_type,title,content,settings_json,sort_order,created_at,updated_at
+                           ) VALUES(?,'assignment',?,?,?,1,?,?)""",
+                        (lesson_ids[2], "Практика", "Опишите результат", '{"response_type":"link"}', stamp, stamp),
                     )
                     await conn.execute(
                         """UPDATE mini_app_course_units SET previous_button_label=?,
@@ -397,6 +409,9 @@ class LearningCatalogCardTests(unittest.TestCase):
                 self.assertEqual(lesson["previous_button_label"], "Вернуться")
                 self.assertEqual(lesson["next_button_label"], "Продолжить обучение")
                 self.assertEqual(lesson["finish_button_label"], "Готово")
+                initial_course = await get_course(database, course_id, 42)
+                self.assertEqual([item["locked"] for item in initial_course["lessons"]], [False, True, True])
+                self.assertIsNone(await get_course_lesson(database, course_id, lesson_ids[1], 42))
                 opened_course = await get_course(database, course_id, 42)
                 self.assertTrue(opened_course["started"])
                 self.assertEqual(opened_course["resume_lesson_id"], lesson_ids[0])
@@ -405,10 +420,27 @@ class LearningCatalogCardTests(unittest.TestCase):
                 self.assertEqual(first["progress"], 50)
                 self.assertEqual(first["next_lesson_id"], lesson_ids[1])
                 self.assertFalse(first["completed"])
+                after_first = await get_course(database, course_id, 42)
+                self.assertEqual([item["locked"] for item in after_first["lessons"]], [False, False, True])
 
                 optional = await complete_course_lesson(database, course_id, lesson_ids[1], 42)
                 self.assertEqual(optional["progress"], 50)
                 self.assertEqual(optional["next_lesson_id"], lesson_ids[2])
+
+                final_lesson = await get_course_lesson(database, course_id, lesson_ids[2], 42)
+                test_block = next(block for block in final_lesson["blocks"] if block["block_type"] == "test")
+                self.assertNotIn("correct", test_block["settings"])
+                wrong = await answer_course_test(database, course_id, lesson_ids[2], test_block["id"], 42, 1)
+                self.assertFalse(wrong["correct"])
+                self.assertEqual(wrong["explanation"], "Потому что первый")
+                correct = await answer_course_test(database, course_id, lesson_ids[2], test_block["id"], 42, 0)
+                self.assertTrue(correct["correct"])
+                assignment = next(block for block in final_lesson["blocks"] if block["block_type"] == "assignment")
+                submitted = await submit_course_assignment(
+                    database, course_id, lesson_ids[2], assignment["id"], 42,
+                    "https://example.com/work", None, None,
+                )
+                self.assertEqual(submitted["response_type"], "link")
 
                 final = await complete_course_lesson(database, course_id, lesson_ids[2], 42)
                 self.assertEqual(final["progress"], 100)
@@ -418,6 +450,13 @@ class LearningCatalogCardTests(unittest.TestCase):
                 self.assertTrue(completed_course["completed"])
                 self.assertEqual(completed_course["resume_lesson_id"], lesson_ids[0])
                 self.assertTrue(all(item["completed"] for item in completed_course["lessons"]))
+                self.assertEqual(completed_course["completion_title"], "Отличная работа")
+
+                liked = await toggle_course_like(database, course_id, 42)
+                self.assertTrue(liked["liked"])
+                self.assertEqual(liked["like_count"], 1)
+                review = await submit_course_review(database, course_id, 42, "Полезный курс")
+                self.assertEqual(review["status"], "pending")
 
                 async with database.connect() as conn:
                     state_row = await (await conn.execute(
@@ -426,6 +465,20 @@ class LearningCatalogCardTests(unittest.TestCase):
                     )).fetchone()
                 self.assertEqual(state_row["last_lesson_id"], lesson_ids[2])
                 self.assertIsNotNone(state_row["completed_at"])
+                async with database.connect() as conn:
+                    attempts = (await (await conn.execute(
+                        "SELECT COUNT(*) FROM mini_app_course_test_attempts WHERE telegram_id=42"
+                    )).fetchone())[0]
+                    pending_review = await (await conn.execute(
+                        "SELECT review_status FROM mini_app_course_feedback WHERE telegram_id=42 AND course_id=?",
+                        (course_id,),
+                    )).fetchone()
+                    submissions = (await (await conn.execute(
+                        "SELECT COUNT(*) FROM mini_app_course_assignment_submissions WHERE telegram_id=42"
+                    )).fetchone())[0]
+                self.assertEqual(attempts, 2)
+                self.assertEqual(pending_review["review_status"], "pending")
+                self.assertEqual(submissions, 1)
 
         asyncio.run(check())
 

@@ -4,6 +4,7 @@ import html
 import json
 import secrets
 import shutil
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -17,7 +18,14 @@ def esc(value: object) -> str:
 class CourseAdmin:
     """A simple course builder with optional modules and independent lesson blocks."""
 
-    block_labels = {"longread": "Лонгрид", "video": "Видео", "image": "Изображение", "test": "Тест"}
+    block_labels = {
+        "longread": "Лонгрид",
+        "video": "Видео",
+        "image": "Изображение",
+        "test": "Тест",
+        "file": "Дополнительный файл",
+        "assignment": "Задание",
+    }
 
     def __init__(self, learning_admin):
         self.owner = learning_admin
@@ -52,9 +60,9 @@ class CourseAdmin:
         return '''
         :root{--bg:#f7f5f2;--paper:#fff;--ink:#292421;--muted:#817873;--line:#e7e0da;--accent:#c56349;--soft:#f3ece7;--success:#2f7147}
         *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}main{max-width:1340px;margin:auto;padding:26px 20px 80px}a{color:inherit}.admin-tabs{display:flex;gap:7px;margin:0 0 28px;padding:5px;width:max-content;border:1px solid var(--line);border-radius:13px;background:var(--paper)}.admin-tabs a{padding:8px 14px;border-radius:9px;color:var(--muted);font-weight:750;text-decoration:none}.admin-tabs a.active{background:var(--accent);color:#fff}.top,.row,.section-head,.lesson-line{display:flex;align-items:center;justify-content:space-between;gap:14px}.top{margin-bottom:22px}.top h1{margin:0;font:700 38px/1.08 Georgia,serif}.top p,.hint{color:var(--muted)}h2{margin:0 0 6px;font-size:21px}h3{margin:0;font-size:16px}.button,button{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:10px;padding:10px 15px;background:var(--accent);color:#fff;font:700 14px system-ui;cursor:pointer;text-decoration:none}.secondary{background:var(--soft);color:var(--ink)}.danger{background:#fff0ed;color:#a44439}.ghost{padding:7px 9px;background:transparent;color:var(--muted)}.panel,.course-card,.module-card,.block-card{background:var(--paper);border:1px solid var(--line);border-radius:17px;padding:20px;margin:12px 0}.course-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;align-items:center}.course-card p{margin:5px 0;color:var(--muted)}.meta{font-size:12px;color:var(--muted)}.course-workspace{display:grid;grid-template-columns:270px minmax(0,1fr);gap:18px;align-items:start}.layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px}.sticky{position:sticky;top:16px}.field{display:block;margin:15px 0;color:var(--muted);font-size:13px}input,textarea,select{width:100%;margin-top:6px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font:inherit}textarea{min-height:92px;resize:vertical}.checkbox{display:flex;gap:10px;align-items:flex-start;padding:13px;border:1px solid var(--line);border-radius:12px}.checkbox input{width:18px;height:18px;margin:2px 0}.actions,.lesson-actions,.block-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.empty{padding:30px;border:1px dashed var(--line);border-radius:14px;text-align:center;color:var(--muted)}.module-card{padding:0;overflow:hidden;scroll-margin-top:18px}.module-head{padding:17px 18px;background:var(--soft)}.module-head form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto auto;gap:8px;align-items:center}.module-head input{margin:0}.lesson-list{padding:7px 17px 13px}.lesson-line{padding:12px 0;border-bottom:1px solid var(--line)}.lesson-line:last-child{border-bottom:0}.lesson-line p{margin:3px 0 0;color:var(--muted);font-size:12px}.ungrouped{margin-bottom:18px}.add-box{padding:16px;border:1px dashed #cdbdb2;border-radius:14px;background:color-mix(in srgb,var(--soft) 55%,white)}.add-grid{display:grid;grid-template-columns:minmax(0,1fr) 220px auto;gap:9px;align-items:end}.add-grid input,.add-grid select{margin:0}.back{display:inline-block;margin-bottom:17px;color:var(--muted);text-decoration:none}.block-card{position:relative}.block-type{display:inline-flex;padding:4px 8px;border-radius:999px;background:var(--soft);color:var(--accent);font-size:11px;font-weight:800}.block-preview{margin:12px 0}.block-preview img,.block-preview video{display:block;width:100%;max-height:480px;object-fit:contain;border-radius:12px;background:#181513}.test-options{display:grid;grid-template-columns:1fr 1fr;gap:8px}.saved{margin:0 0 14px;padding:11px 14px;border-radius:11px;background:#e2f1e6;color:var(--success)}.format-hint{padding:9px 11px;border-radius:9px;background:var(--soft);color:var(--muted);font-size:12px}.course-toolbar{display:flex;gap:5px;flex-wrap:wrap;padding:7px;background:var(--soft);border-radius:11px 11px 0 0;margin-top:14px}.course-toolbar button{padding:7px 10px;background:transparent;color:var(--ink)}.course-toolbar button:hover{background:#fff}.course-toolbar .media-button{background:var(--accent);color:#fff}.course-editor{min-height:330px;border:1px solid var(--line);border-top:0;border-radius:0 0 11px 11px;padding:18px;font-size:17px;line-height:1.7;outline:none}.course-editor:empty:before{content:attr(data-placeholder);color:#aaa}.course-editor figure.inline-media{position:relative;margin:22px 0;padding:8px;border:1px solid transparent;border-radius:12px;cursor:grab}.course-editor figure.inline-media:hover{border-color:var(--line);background:var(--soft)}.course-editor figure.inline-media:before{content:'⠿ Перетащите, чтобы изменить место';display:block;color:var(--muted);font-size:12px;margin-bottom:6px}.course-editor figure img,.course-editor figure video{display:block;max-width:100%;max-height:520px;border-radius:10px;margin:auto}.media-remove{position:absolute;top:10px;right:10px;width:34px;height:34px;padding:0;border-radius:50%;background:#fff;color:#a44439;box-shadow:0 3px 14px #0003;font-size:22px}.editor-status{min-height:21px;margin-top:7px;color:var(--muted);font-size:12px}.file-drop{display:block;margin-top:14px;padding:18px;border:1px dashed #c9b9ae;border-radius:13px;text-align:center;cursor:pointer}.file-drop input{display:none}.add-block{margin:16px 0 22px;padding:20px;border:1px dashed #cdbdb2;border-radius:17px;background:var(--paper)}.lesson-blocks{display:grid;gap:12px}.lesson-blocks .block-card{margin:0}.block-kind-tabs{display:flex;gap:7px;flex-wrap:wrap;margin:13px 0}.block-kind-tabs button{background:var(--soft);color:var(--ink)}.block-kind-tabs button.active{background:var(--accent);color:#fff}.block-add-form{display:none;padding-top:3px}.block-add-form.active{display:block}.course-outline{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow:auto;margin:0;padding:12px;border:1px solid var(--line);border-radius:17px;background:var(--paper)}.outline-course{display:flex;gap:9px;align-items:center;padding:10px;border-radius:10px;text-decoration:none;font-weight:850}.outline-course.active,.outline-course:hover{background:var(--soft)}.outline-course span{color:var(--accent)}.outline-label{padding:13px 9px 5px;color:var(--muted);font-size:10px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.tree-module{margin-top:5px;border-radius:10px}.tree-module-title,.tree-lesson{display:flex;gap:7px;align-items:center;min-width:0;border-radius:9px;color:var(--ink);text-decoration:none}.tree-module-title{padding:8px 8px;font-size:13px;font-weight:800}.tree-lesson{margin:2px 0 2px 20px;padding:7px 8px;color:var(--muted);font-size:12px}.tree-module-title:hover,.tree-lesson:hover,.tree-lesson.active{background:var(--soft);color:var(--ink)}.tree-grip{flex:none;color:#b6a79d;cursor:grab}.tree-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tree-drop{min-height:8px;border-radius:7px}.tree-drop.drag-over,.tree-module-title.drag-over,.tree-lesson.drag-over{outline:2px solid var(--accent);background:var(--soft)}.outline-add{margin:8px 0 3px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.outline-add details+details{border-top:1px solid var(--line)}.outline-add summary{padding:10px 8px;cursor:pointer;color:var(--accent);font-size:12px;font-weight:800}.outline-add form{padding:0 7px 11px}.outline-add .field{margin:8px 0}.outline-add input,.outline-add select{padding:8px;font-size:12px}.outline-add button{width:100%;padding:8px;font-size:12px}
-        .outline-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:9px 0 12px}.outline-actions button{width:100%;padding:8px 6px;background:var(--soft);color:var(--accent);font-size:11px}.outline-actions button:hover{background:var(--accent);color:#fff}.tree-item{position:relative;min-width:0}.tree-item>.tree-lesson,.tree-item>.tree-module-title{padding-right:34px}.tree-delete{position:absolute;z-index:3;right:3px;top:50%;transform:translateY(-50%);opacity:0;pointer-events:none}.tree-item:hover>.tree-delete,.tree-item:focus-within>.tree-delete{opacity:1;pointer-events:auto}.tree-delete button{width:27px;height:27px;padding:0;border-radius:8px;background:#fff0ed;color:#a44439;font-size:16px}.course-upload-overlay{position:fixed;z-index:50;inset:0;display:none;place-items:center;background:#261d19aa;padding:20px}.course-upload-overlay.active{display:grid}.course-upload-box{width:min(390px,90vw);padding:24px;border-radius:18px;background:#fff;text-align:center;box-shadow:0 24px 80px #0004}.course-upload-track{height:8px;margin-top:14px;border-radius:99px;overflow:hidden;background:var(--soft)}.course-upload-track i{display:block;width:8%;height:100%;background:var(--accent);transition:width .2s}
+        .outline-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:9px 0 12px}.outline-actions button{width:100%;padding:8px 6px;background:var(--soft);color:var(--accent);font-size:11px}.outline-actions button:hover{background:var(--accent);color:#fff}.tree-item{position:relative;min-width:0}.tree-item>.tree-lesson,.tree-item>.tree-module-title{padding-right:34px}.tree-delete{position:absolute;z-index:3;right:3px;top:50%;transform:translateY(-50%);opacity:0;pointer-events:none}.tree-item:hover>.tree-delete,.tree-item:focus-within>.tree-delete{opacity:1;pointer-events:auto}.tree-delete button{width:27px;height:27px;padding:0;border-radius:8px;background:#fff0ed;color:#a44439;font-size:16px}.analytics-panel summary,.panel>summary{cursor:pointer}.analytics-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0}.analytics-cards div{display:grid;padding:13px;border-radius:12px;background:var(--soft)}.analytics-cards b{font-size:24px}.analytics-cards span{color:var(--muted);font-size:11px}.analytics-table{overflow:auto;margin-top:10px}.analytics-table table{width:100%;border-collapse:collapse}.analytics-table th,.analytics-table td{padding:9px;border-bottom:1px solid var(--line);text-align:left;font-size:12px}.review-admin-list{display:grid;gap:9px;margin-top:15px}.review-admin-card{padding:14px;border:1px solid var(--line);border-radius:13px}.review-admin-card>div{display:flex;justify-content:space-between;gap:8px}.review-admin-card p{white-space:pre-wrap}.review-status{padding:3px 7px;border-radius:999px;background:var(--soft);font-size:10px}.review-status.approved{background:#e2f1e6;color:var(--success)}.review-status.rejected{background:#fff0ed;color:#a44439}.course-upload-overlay{position:fixed;z-index:50;inset:0;display:none;place-items:center;background:#261d19aa;padding:20px}.course-upload-overlay.active{display:grid}.course-upload-box{width:min(390px,90vw);padding:24px;border-radius:18px;background:#fff;text-align:center;box-shadow:0 24px 80px #0004}.course-upload-track{height:8px;margin-top:14px;border-radius:99px;overflow:hidden;background:var(--soft)}.course-upload-track i{display:block;width:8%;height:100%;background:var(--accent);transition:width .2s}
         @media(max-width:1000px){.course-workspace{grid-template-columns:230px minmax(0,1fr)}.layout{grid-template-columns:1fr}.sticky{position:static}}
-        @media(max-width:760px){.course-workspace{grid-template-columns:1fr}.course-outline{position:static;max-height:none}.top,.course-card{align-items:stretch;grid-template-columns:1fr;flex-direction:column}.course-card{display:flex}.module-head form,.add-grid{grid-template-columns:1fr}.lesson-line{align-items:flex-start}.test-options{grid-template-columns:1fr}.top h1{font-size:32px}.admin-tabs{width:100%}.admin-tabs a{flex:1;text-align:center}}
+        @media(max-width:760px){.course-workspace{grid-template-columns:1fr}.course-outline{position:static;max-height:none}.top,.course-card{align-items:stretch;grid-template-columns:1fr;flex-direction:column}.course-card{display:flex}.module-head form,.add-grid{grid-template-columns:1fr}.lesson-line{align-items:flex-start}.test-options{grid-template-columns:1fr}.analytics-cards{grid-template-columns:1fr 1fr}.top h1{font-size:32px}.admin-tabs{width:100%}.admin-tabs a{flex:1;text-align:center}}
         '''
 
     def course_outline(self, course, modules, lessons, active_lesson_id: int | None = None) -> str:
@@ -120,6 +128,100 @@ class CourseAdmin:
         }});
         }})();</script>'''
 
+    async def analytics_html(self, db, course_id: int, lessons) -> str:
+        states = await self.owner.rows(
+            db,
+            "SELECT telegram_id,last_lesson_id,completed_at FROM mini_app_course_user_state WHERE course_id=?",
+            (course_id,),
+        )
+        completed_rows = await self.owner.rows(
+            db,
+            """SELECT p.telegram_id,p.lesson_id FROM mini_app_course_unit_progress p
+               JOIN mini_app_course_units l ON l.id=p.lesson_id
+               WHERE l.course_id=? AND p.completed_at IS NOT NULL""",
+            (course_id,),
+        )
+        completed_by_user: dict[int, set[int]] = {}
+        for row in completed_rows:
+            completed_by_user.setdefault(int(row["telegram_id"]), set()).add(int(row["lesson_id"]))
+        required = [row for row in lessons if row["is_required"]] or list(lessons)
+        required_ids = {int(row["id"]) for row in required}
+        progress_values = [
+            round(len(completed_by_user.get(int(state["telegram_id"]), set()) & required_ids) / len(required_ids) * 100)
+            if required_ids else 0
+            for state in states
+        ]
+        started = len(states)
+        completed_count = sum(1 for state in states if state["completed_at"])
+        average = round(sum(progress_values) / started) if started else 0
+        title_by_id = {int(row["id"]): row["title"] for row in lessons}
+        stuck = Counter(
+            title_by_id.get(int(state["last_lesson_id"]))
+            for state in states
+            if state["last_lesson_id"] and not state["completed_at"]
+        )
+        stuck.pop(None, None)
+        stuck_label = stuck.most_common(1)[0][0] if stuck else "—"
+        lesson_stats = await self.owner.rows(
+            db,
+            """SELECT l.id,l.title,
+                      COUNT(DISTINCT CASE WHEN p.started_at IS NOT NULL THEN p.telegram_id END) started_count,
+                      COUNT(DISTINCT CASE WHEN p.completed_at IS NOT NULL THEN p.telegram_id END) completed_count
+               FROM mini_app_course_units l
+               LEFT JOIN mini_app_course_unit_progress p ON p.lesson_id=l.id
+               WHERE l.course_id=? GROUP BY l.id ORDER BY l.sort_order,l.id""",
+            (course_id,),
+        )
+        test_stats = await self.owner.rows(
+            db,
+            """SELECT b.id,b.content,l.title lesson_title,
+                      COUNT(DISTINCT a.telegram_id) participant_count,
+                      COUNT(DISTINCT CASE WHEN a.is_correct=1 THEN a.telegram_id END) passed_count,
+                      COUNT(a.id) attempt_count
+               FROM mini_app_course_blocks b
+               JOIN mini_app_course_units l ON l.id=b.lesson_id
+               LEFT JOIN mini_app_course_test_attempts a ON a.block_id=b.id
+               WHERE l.course_id=? AND b.block_type='test'
+               GROUP BY b.id ORDER BY l.sort_order,b.sort_order,b.id""",
+            (course_id,),
+        )
+        assignment_count = int((await (await db.execute(
+            """SELECT COUNT(*) FROM mini_app_course_assignment_submissions s
+               JOIN mini_app_course_blocks b ON b.id=s.block_id
+               JOIN mini_app_course_units l ON l.id=b.lesson_id WHERE l.course_id=?""",
+            (course_id,),
+        )).fetchone())[0])
+        like_count = int((await (await db.execute(
+            "SELECT COUNT(*) FROM mini_app_course_feedback WHERE course_id=? AND liked=1", (course_id,)
+        )).fetchone())[0])
+        review_count = int((await (await db.execute(
+            "SELECT COUNT(*) FROM mini_app_course_feedback WHERE course_id=? AND review_text IS NOT NULL", (course_id,)
+        )).fetchone())[0])
+        lesson_rows = "".join(
+            f'''<tr><td>{esc(row["title"])}</td><td>{row["started_count"]}</td><td>{row["completed_count"]}</td></tr>'''
+            for row in lesson_stats
+        ) or '<tr><td colspan="3">Уроков пока нет</td></tr>'
+        test_rows = "".join(
+            f'''<tr><td><b>{esc(row["lesson_title"])}</b><br><span class="hint">{esc(row["content"] or "Тест")}</span></td><td>{row["participant_count"]}</td><td>{row["passed_count"]}</td><td>{row["attempt_count"]}</td></tr>'''
+            for row in test_stats
+        )
+        return f'''<details class="panel analytics-panel" open><summary><b>Аналитика курса</b></summary><div class="analytics-cards"><div><b>{started}</b><span>начали</span></div><div><b>{completed_count}</b><span>завершили</span></div><div><b>{average}%</b><span>средний прогресс</span></div><div><b>{like_count}</b><span>лайков</span></div><div><b>{review_count}</b><span>отзывов</span></div><div><b>{assignment_count}</b><span>заданий сдано</span></div></div><p class="hint">Чаще останавливаются: <b>{esc(stuck_label)}</b></p><div class="analytics-table"><table><thead><tr><th>Урок</th><th>Начали</th><th>Прошли</th></tr></thead><tbody>{lesson_rows}</tbody></table></div>{f'<h3 style="margin-top:18px">Тесты</h3><div class="analytics-table"><table><thead><tr><th>Тест</th><th>Участники</th><th>Прошли</th><th>Попытки</th></tr></thead><tbody>{test_rows}</tbody></table></div>' if test_rows else ''}</details>'''
+
+    async def feedback_html(self, db, course_id: int) -> str:
+        rows = await self.owner.rows(
+            db,
+            """SELECT f.*,u.full_name,u.username FROM mini_app_course_feedback f
+               JOIN users u ON u.telegram_id=f.telegram_id
+               WHERE f.course_id=? AND f.review_text IS NOT NULL
+               ORDER BY CASE f.review_status WHEN 'pending' THEN 0 ELSE 1 END,f.updated_at DESC""",
+            (course_id,),
+        )
+        cards = "".join(
+            f'''<article class="review-admin-card"><div><b>{esc(row["full_name"] or row["username"] or row["telegram_id"])}</b><span class="review-status {esc(row["review_status"])}">{esc({"pending":"На модерации","approved":"Опубликован","rejected":"Отклонён"}.get(row["review_status"], row["review_status"]))}</span></div><p>{esc(row["review_text"])}</p><form class="actions" method="post" action="{self.action_url}"><input type="hidden" name="action" value="course_review_moderate"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="feedback_id" value="{row["id"]}"><button name="review_status" value="approved">Опубликовать</button><button class="secondary" name="review_status" value="rejected">Отклонить</button><button class="danger" name="review_status" value="delete" onclick="return confirm('Удалить отзыв?')">Удалить</button></form></article>'''
+            for row in rows
+        ) or '<div class="empty">Отзывов пока нет.</div>'
+        return f'''<details class="panel" open><summary><b>Отзывы и модерация</b></summary><div class="review-admin-list">{cards}</div></details>'''
+
     async def page(self, request: web.Request) -> web.Response:
         if request.query.get("lesson"):
             return await self.lesson_editor(request)
@@ -161,9 +263,16 @@ class CourseAdmin:
                     raise web.HTTPNotFound(text="Курс не найден")
             modules = await self.owner.rows(db, "SELECT * FROM mini_app_course_modules WHERE course_id=? ORDER BY sort_order,id", (course["id"],)) if course else []
             lessons = await self.owner.rows(db, "SELECT * FROM mini_app_course_units WHERE course_id=? ORDER BY sort_order,id", (course["id"],)) if course else []
+            next_courses = await self.owner.rows(
+                db,
+                "SELECT id,title FROM mini_app_courses WHERE id<>? ORDER BY title",
+                (course["id"] if course else 0,),
+            )
+            analytics = await self.analytics_html(db, int(course["id"]), lessons) if course else ""
+            feedback = await self.feedback_html(db, int(course["id"])) if course else ""
         finally:
             await db.close()
-        c = course or {"id": "", "title": "", "description": "", "outcome": "", "duration_label": "", "cover_url": "", "is_visible": 0}
+        c = course or {"id": "", "title": "", "description": "", "outcome": "", "duration_label": "", "cover_url": "", "is_visible": 0, "sequential_access": 0, "completion_title": "", "completion_text": "", "completion_recommendation": "", "next_course_id": None}
         grouped = {module["id"]: [] for module in modules}
         ungrouped = []
         for lesson in lessons:
@@ -183,8 +292,15 @@ class CourseAdmin:
         if course:
             flat_lessons = f'''<section class="ungrouped"><div class="panel">{lesson_rows(ungrouped)}</div></section>''' if ungrouped else ""
             program = flat_lessons + module_html or '<div class="empty">Нажмите «Новый урок» или «Новый модуль» в колонке слева.</div>'
+        next_course_options = '<option value="">Не предлагать следующий курс</option>' + "".join(
+            f'<option value="{row["id"]}" {"selected" if row["id"] == c["next_course_id"] else ""}>{esc(row["title"])}</option>'
+            for row in next_courses
+        )
+        preview_buttons = ""
+        if course:
+            preview_buttons = f'''<div class="panel"><h2>Предпросмотр</h2><p class="hint">Откроется точная версия Mini App без записи прогресса.</p><div class="actions"><a class="button secondary" target="_blank" href="/mini-app/preview?course={c['id']}&amp;mode=paid">Как оплаченный</a><a class="button secondary" target="_blank" href="/mini-app/preview?course={c['id']}&amp;mode=unpaid">Как неоплаченный</a></div></div>'''
         return web.Response(
-            text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(c["title"] or "Новый курс")} — Nastaunik</title><script defer src="/mini-app/static/admin_uploads.js?v=2"></script><style>{self.styles()}</style></head><body><main>{self.tabs("courses")}<a class="back" href="{self.courses_url()}">← Все курсы</a>{'<div class="saved">Изменения сохранены</div>' if request.query.get('saved') else ''}<div class="top"><div><h1>{esc(c["title"] or "Новый курс")}</h1><p>Модули необязательны — уроки можно добавлять сразу.</p></div></div><div class="course-workspace">{self.course_outline(c, modules, lessons)}<div class="layout"><div><section class="panel"><h2>Программа курса</h2><p class="hint">Выберите урок слева, чтобы открыть его. Структуру можно менять перетаскиванием.</p>{program}</section></div><aside><form class="panel sticky" data-media-upload data-upload-label="Обложка курса" method="post" action="{self.action_url}" enctype="multipart/form-data"><input type="hidden" name="action" value="course_save"><input type="hidden" name="course_id" value="{c["id"]}"><h2>О курсе</h2><label class="field">Название<input name="title" value="{esc(c["title"])}" required autofocus></label><label class="field">Краткое описание<textarea name="description">{esc(c["description"] or "")}</textarea></label><label class="field">Обложка 16:9<input type="file" name="cover_file" accept=".jpg,.jpeg,.png,.webp"></label>{f'<img src="{esc(c["cover_url"])}" alt="" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:11px">' if c["cover_url"] else ''}<label class="checkbox"><input type="checkbox" name="is_visible" value="1" {"checked" if c["is_visible"] else ""}><span><b>Опубликовать курс в Mini App</b><br><span class="hint">После сохранения курс станет доступен участникам клуба.</span></span></label><div class="actions" style="margin-top:15px"><button>Сохранить курс</button></div></form></aside></div></div>{self.tree_script(c["id"]) if course else ""}</main></body></html>''',
+            text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(c["title"] or "Новый курс")} — Nastaunik</title><script defer src="/mini-app/static/admin_uploads.js?v=2"></script><style>{self.styles()}</style></head><body><main>{self.tabs("courses")}<a class="back" href="{self.courses_url()}">← Все курсы</a>{'<div class="saved">Изменения сохранены</div>' if request.query.get('saved') else ''}<div class="top"><div><h1>{esc(c["title"] or "Новый курс")}</h1><p>Модули необязательны — уроки можно добавлять сразу.</p></div></div><div class="course-workspace">{self.course_outline(c, modules, lessons)}<div class="layout"><div><section class="panel"><h2>Программа курса</h2><p class="hint">Выберите урок слева, чтобы открыть его. Структуру можно менять перетаскиванием.</p>{program}</section>{analytics}{feedback}</div><aside><form class="panel sticky" data-media-upload data-upload-label="Обложка курса" method="post" action="{self.action_url}" enctype="multipart/form-data"><input type="hidden" name="action" value="course_save"><input type="hidden" name="course_id" value="{c["id"]}"><h2>О курсе</h2><label class="field">Название<input name="title" value="{esc(c["title"])}" required autofocus></label><label class="field">Краткое описание<textarea name="description">{esc(c["description"] or "")}</textarea></label><label class="field">Обложка 16:9<input type="file" name="cover_file" accept=".jpg,.jpeg,.png,.webp"></label>{f'<img src="{esc(c["cover_url"])}" alt="" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:11px">' if c["cover_url"] else ''}<label class="checkbox"><input type="checkbox" name="sequential_access" value="1" {"checked" if c["sequential_access"] else ""}><span><b>Последовательное прохождение</b><br><span class="hint">Следующий урок откроется после завершения предыдущего.</span></span></label><div style="margin-top:20px;padding-top:17px;border-top:1px solid var(--line)"><h3>Экран завершения</h3><label class="field">Заголовок<input name="completion_title" value="{esc(c["completion_title"] or "")}" placeholder="Курс завершён"></label><label class="field">Поздравление<textarea name="completion_text" placeholder="Все обязательные уроки пройдены…">{esc(c["completion_text"] or "")}</textarea></label><label class="field">Что делать дальше<textarea name="completion_recommendation" placeholder="Рекомендация участнику">{esc(c["completion_recommendation"] or "")}</textarea></label><label class="field">Следующий курс<select name="next_course_id">{next_course_options}</select></label></div><label class="checkbox"><input type="checkbox" name="is_visible" value="1" {"checked" if c["is_visible"] else ""}><span><b>Опубликовать курс в Mini App</b><br><span class="hint">После сохранения курс станет доступен участникам клуба.</span></span></label><div class="actions" style="margin-top:15px"><button>Сохранить курс</button></div></form>{preview_buttons}</aside></div></div>{self.tree_script(c["id"]) if course else ""}</main></body></html>''',
             content_type="text/html",
         )
 
@@ -237,18 +353,24 @@ class CourseAdmin:
             options = list(settings.get("options") or ["", "", "", ""])
             options += [""] * (4 - len(options))
             correct = int(settings.get("correct", 0))
-            fields = f'<label class="field">Вопрос<textarea name="content">{esc(block["content"] or "")}</textarea></label><div class="test-options">' + "".join(f'<label class="field">Вариант {i + 1}<input name="option_{i}" value="{esc(options[i])}"></label>' for i in range(4)) + f'</div><label class="field">Правильный ответ<select name="correct_option">' + "".join(f'<option value="{i}" {"selected" if correct == i else ""}>Вариант {i + 1}</option>' for i in range(4)) + '</select></label>'
+            fields = f'<label class="field">Вопрос<textarea name="content">{esc(block["content"] or "")}</textarea></label><div class="test-options">' + "".join(f'<label class="field">Вариант {i + 1}<input name="option_{i}" value="{esc(options[i])}"></label>' for i in range(4)) + f'</div><label class="field">Правильный ответ<select name="correct_option">' + "".join(f'<option value="{i}" {"selected" if correct == i else ""}>Вариант {i + 1}</option>' for i in range(4)) + f'''</select></label><label class="field">Пояснение после ответа<textarea name="explanation" placeholder="Почему этот ответ правильный">{esc(settings.get("explanation") or "")}</textarea></label>'''
+        elif block_type == "assignment":
+            response_type = settings.get("response_type") or "text"
+            fields = f'''<label class="field">Название<input name="title" value="{esc(block["title"] or "")}" placeholder="Практическое задание"></label><label class="field">Условие<textarea name="content" placeholder="Что нужно сделать">{esc(block["content"] or "")}</textarea></label><label class="field">Подсказка или пояснение<textarea name="description">{esc(block["description"] or "")}</textarea></label><label class="field">Формат ответа<select name="response_type"><option value="text" {"selected" if response_type == "text" else ""}>Текст</option><option value="link" {"selected" if response_type == "link" else ""}>Ссылка</option><option value="file" {"selected" if response_type == "file" else ""}>Файл</option></select></label>'''
+        elif block_type == "file":
+            fields = f'''<div class="format-hint">📎 {esc(block["title"] or Path(block["content"] or "Файл").name)}</div><label class="field">Название<input name="title" value="{esc(block["title"] or "")}" placeholder="Название файла"></label><label class="field">Краткое описание<textarea name="description">{esc(block["description"] or "")}</textarea></label><label class="file-drop"><b>＋ Заменить файл</b><input type="file" name="block_file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip"></label>'''
         else:
             media_name = "видео" if block_type == "video" else "изображение"
             accept = "video/mp4" if block_type == "video" else "image/*"
             fields = f'''{preview}<label class="field">Описание<textarea name="description" placeholder="Коротко опишите {media_name}">{esc(block["description"] or "")}</textarea></label><label class="file-drop"><b>＋ Заменить {media_name}</b><br><span class="hint">Выбранный файл загрузится после сохранения</span><input type="file" name="block_file" accept="{accept}"></label>'''
-        form_class = "course-block-form course-file-form" if block_type in {"video", "image"} else "course-block-form"
-        upload_attrs = f''' data-media-upload data-upload-label="{esc('Видео урока' if block_type == 'video' else 'Изображение урока')}"''' if block_type in {"video", "image"} else ""
+        form_class = "course-block-form course-file-form" if block_type in {"video", "image", "file"} else "course-block-form"
+        upload_name = {"video": "Видео урока", "image": "Изображение урока", "file": "Файл урока"}.get(block_type, "")
+        upload_attrs = f''' data-media-upload data-upload-label="{esc(upload_name)}"''' if upload_name else ""
         return f'''<article class="block-card"><span class="block-type">{esc(self.block_labels.get(block_type, block_type))}</span><form class="{form_class}"{upload_attrs} method="post" action="{self.action_url}" enctype="multipart/form-data"><input type="hidden" name="action" value="course_block_save"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><input type="hidden" name="block_id" value="{block["id"]}">{fields}<div class="block-actions"><button>Сохранить</button></div></form><form method="post" action="{self.action_url}" style="position:absolute;right:16px;top:16px" onsubmit="return confirm('Удалить блок?')"><input type="hidden" name="action" value="course_block_delete"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><input type="hidden" name="block_id" value="{block["id"]}"><button class="ghost" title="Удалить блок">×</button></form></article>'''
 
     def add_block_form(self, lesson_id: int, course_id: int) -> str:
         hidden = f'''<input type="hidden" name="action" value="course_block_add"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}">'''
-        return f'''<section class="add-block"><h3>Добавить в урок</h3><p class="hint">Выберите, что должно идти следующим.</p><div class="block-kind-tabs"><button type="button" class="active" data-add-kind="longread">Статья</button><button type="button" data-add-kind="video">Видео</button><button type="button" data-add-kind="image">Изображение</button><button type="button" data-add-kind="test">Тест</button></div><form class="block-add-form active" data-add-form="longread" method="post" action="{self.action_url}">{hidden}<input type="hidden" name="block_type" value="longread"><p>Создайте лонгрид, а затем вставьте текст или готовый пост в полноценный редактор.</p><button>＋ Создать статью</button></form><form class="block-add-form course-file-form" data-add-form="video" data-media-upload data-upload-label="Видео урока" method="post" action="{self.action_url}" enctype="multipart/form-data">{hidden}<input type="hidden" name="block_type" value="video"><label class="file-drop"><b>＋ Выбрать видео</b><br><span class="hint">MP4</span><input type="file" name="block_file" accept="video/mp4" required></label><label class="field">Описание<textarea name="description" placeholder="Коротко опишите видео"></textarea></label><button>Загрузить видео</button></form><form class="block-add-form course-file-form" data-add-form="image" data-media-upload data-upload-label="Изображение урока" method="post" action="{self.action_url}" enctype="multipart/form-data">{hidden}<input type="hidden" name="block_type" value="image"><label class="file-drop"><b>＋ Выбрать изображение</b><input type="file" name="block_file" accept="image/*" required></label><label class="field">Описание<textarea name="description" placeholder="Коротко опишите изображение"></textarea></label><button>Загрузить изображение</button></form><form class="block-add-form" data-add-form="test" method="post" action="{self.action_url}">{hidden}<input type="hidden" name="block_type" value="test"><label class="field">Вопрос<textarea name="content" placeholder="Введите вопрос" required></textarea></label><p class="hint">Варианты ответов появятся сразу после создания.</p><button>＋ Создать тест</button></form></section>'''
+        return f'''<section class="add-block"><h3>Добавить в урок</h3><p class="hint">Выберите, что должно идти следующим.</p><div class="block-kind-tabs"><button type="button" class="active" data-add-kind="longread">Статья</button><button type="button" data-add-kind="video">Видео</button><button type="button" data-add-kind="image">Изображение</button><button type="button" data-add-kind="test">Тест</button><button type="button" data-add-kind="file">Файл</button><button type="button" data-add-kind="assignment">Задание</button></div><form class="block-add-form active" data-add-form="longread" method="post" action="{self.action_url}">{hidden}<input type="hidden" name="block_type" value="longread"><p>Создайте лонгрид, а затем вставьте текст или готовый пост в полноценный редактор.</p><button>＋ Создать статью</button></form><form class="block-add-form course-file-form" data-add-form="video" data-media-upload data-upload-label="Видео урока" method="post" action="{self.action_url}" enctype="multipart/form-data">{hidden}<input type="hidden" name="block_type" value="video"><label class="file-drop"><b>＋ Выбрать видео</b><br><span class="hint">MP4</span><input type="file" name="block_file" accept="video/mp4" required></label><label class="field">Описание<textarea name="description" placeholder="Коротко опишите видео"></textarea></label><button>Загрузить видео</button></form><form class="block-add-form course-file-form" data-add-form="image" data-media-upload data-upload-label="Изображение урока" method="post" action="{self.action_url}" enctype="multipart/form-data">{hidden}<input type="hidden" name="block_type" value="image"><label class="file-drop"><b>＋ Выбрать изображение</b><input type="file" name="block_file" accept="image/*" required></label><label class="field">Описание<textarea name="description" placeholder="Коротко опишите изображение"></textarea></label><button>Загрузить изображение</button></form><form class="block-add-form" data-add-form="test" method="post" action="{self.action_url}">{hidden}<input type="hidden" name="block_type" value="test"><label class="field">Вопрос<textarea name="content" placeholder="Введите вопрос" required></textarea></label><p class="hint">Варианты ответов, правильный ответ и пояснение появятся после создания.</p><button>＋ Создать тест</button></form><form class="block-add-form course-file-form" data-add-form="file" data-media-upload data-upload-label="Файл урока" method="post" action="{self.action_url}" enctype="multipart/form-data">{hidden}<input type="hidden" name="block_type" value="file"><label class="file-drop"><b>＋ Выбрать файл</b><br><span class="hint">PDF, документы, таблицы, презентации, ZIP</span><input type="file" name="block_file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip" required></label><label class="field">Название<input name="title" placeholder="Например: Рабочая тетрадь"></label><label class="field">Описание<textarea name="description"></textarea></label><button>Загрузить файл</button></form><form class="block-add-form" data-add-form="assignment" method="post" action="{self.action_url}">{hidden}<input type="hidden" name="block_type" value="assignment"><label class="field">Название<input name="title" placeholder="Практическое задание"></label><label class="field">Условие<textarea name="content" placeholder="Что нужно сделать" required></textarea></label><label class="field">Формат ответа<select name="response_type"><option value="text">Текст</option><option value="link">Ссылка</option><option value="file">Файл</option></select></label><button>＋ Добавить задание</button></form></section>'''
 
     async def save_course_cover(self, db, course_id: int, upload) -> None:
         if not getattr(upload, "filename", None) or not getattr(upload, "file", None):
@@ -272,7 +394,11 @@ class CourseAdmin:
         if not getattr(upload, "filename", None) or not getattr(upload, "file", None):
             return None, None
         extension = Path(upload.filename).suffix.lower()
-        allowed = {"video": {".mp4"}, "image": {".jpg", ".jpeg", ".png", ".webp", ".gif"}}
+        allowed = {
+            "video": {".mp4"},
+            "image": {".jpg", ".jpeg", ".png", ".webp", ".gif"},
+            "file": {".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".txt", ".zip"},
+        }
         if extension not in allowed.get(block_type, set()):
             raise web.HTTPBadRequest(text="Выберите подходящий файл")
         self.owner.media_dir.mkdir(parents=True, exist_ok=True)
@@ -280,7 +406,8 @@ class CourseAdmin:
         target = self.owner.media_dir / stored_name
         with target.open("wb") as output:
             shutil.copyfileobj(upload.file, output)
-        await self.owner.enqueue_video(db, target)
+        if block_type == "video":
+            await self.owner.enqueue_video(db, target)
         return f"/mini-app/media/{stored_name}", stored_name
 
     async def action(self, request: web.Request, form) -> web.Response:
@@ -312,13 +439,56 @@ class CourseAdmin:
                 if not title:
                     raise web.HTTPBadRequest(text="Введите название курса")
                 visible = 1 if form.get("is_visible") == "1" else 0
-                values = (title, str(form.get("description") or "").strip() or None, str(form.get("outcome") or "").strip() or None, str(form.get("duration_label") or "").strip() or None, visible, "published" if visible else "draft", now)
+                next_course_id = int(form.get("next_course_id") or 0) or None
+                if next_course_id == course_id:
+                    next_course_id = None
+                values = (
+                    title,
+                    str(form.get("description") or "").strip() or None,
+                    str(form.get("outcome") or "").strip() or None,
+                    str(form.get("duration_label") or "").strip() or None,
+                    1 if form.get("sequential_access") == "1" else 0,
+                    str(form.get("completion_title") or "").strip() or None,
+                    str(form.get("completion_text") or "").strip() or None,
+                    str(form.get("completion_recommendation") or "").strip() or None,
+                    next_course_id,
+                    visible,
+                    "published" if visible else "draft",
+                    now,
+                )
                 if course_id:
-                    await db.execute("UPDATE mini_app_courses SET title=?,description=?,outcome=?,duration_label=?,is_visible=?,status=?,updated_at=? WHERE id=?", (*values, course_id))
+                    await db.execute(
+                        """UPDATE mini_app_courses SET title=?,description=?,outcome=?,duration_label=?,
+                               sequential_access=?,completion_title=?,completion_text=?,completion_recommendation=?,
+                               next_course_id=?,is_visible=?,status=?,updated_at=? WHERE id=?""",
+                        (*values, course_id),
+                    )
                 else:
-                    cur = await db.execute("INSERT INTO mini_app_courses(title,description,outcome,duration_label,is_visible,status,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?,0,?,?)", (*values[:-1], now, now))
+                    cur = await db.execute(
+                        """INSERT INTO mini_app_courses(
+                               title,description,outcome,duration_label,sequential_access,completion_title,
+                               completion_text,completion_recommendation,next_course_id,is_visible,status,
+                               sort_order,created_at,updated_at
+                           ) VALUES(?,?,?,?,?,?,?,?,?,?,?,0,?,?)""",
+                        (*values[:-1], now, now),
+                    )
                     course_id = int(cur.lastrowid)
                 await self.save_course_cover(db, course_id, form.get("cover_file"))
+            elif action == "course_review_moderate":
+                feedback_id = int(form.get("feedback_id") or 0)
+                status = str(form.get("review_status") or "")
+                if status == "delete":
+                    await db.execute(
+                        "DELETE FROM mini_app_course_feedback WHERE id=? AND course_id=?",
+                        (feedback_id, course_id),
+                    )
+                elif status in {"approved", "rejected"}:
+                    await db.execute(
+                        "UPDATE mini_app_course_feedback SET review_status=?,updated_at=? WHERE id=? AND course_id=?",
+                        (status, now, feedback_id, course_id),
+                    )
+                else:
+                    raise web.HTTPBadRequest(text="Неизвестный статус отзыва")
             elif action == "course_delete":
                 if course_id:
                     rows = await self.owner.rows(db, "SELECT stored_name,material_id FROM mini_app_course_blocks b JOIN mini_app_course_units l ON l.id=b.lesson_id WHERE l.course_id=?", (course_id,))
@@ -474,17 +644,33 @@ class CourseAdmin:
                     block_type = row["block_type"]
                 if block_type not in self.block_labels:
                     raise web.HTTPBadRequest(text="Неизвестный тип блока")
-                upload_url, stored_name = await self.save_block_upload(db, form.get("block_file"), block_type)
+                block_upload = form.get("block_file")
+                upload_url, stored_name = await self.save_block_upload(db, block_upload, block_type)
                 content = str(form.get("content") or "").strip() or None
+                block_title = str(form.get("title") or "").strip() or None
+                if block_type == "file" and not block_title and getattr(block_upload, "filename", None):
+                    block_title = Path(block_upload.filename).name
                 if block_type == "longread":
                     from bot.learning_admin_v2 import clean_rich_text
 
                     content = clean_rich_text(content or "").strip() or None
                 settings = None
                 if block_type == "test":
-                    settings = json.dumps({"options": [str(form.get(f"option_{i}") or "").strip() for i in range(4)], "correct": int(form.get("correct_option") or 0)}, ensure_ascii=False)
+                    settings = json.dumps(
+                        {
+                            "options": [str(form.get(f"option_{i}") or "").strip() for i in range(4)],
+                            "correct": int(form.get("correct_option") or 0),
+                            "explanation": str(form.get("explanation") or "").strip(),
+                        },
+                        ensure_ascii=False,
+                    )
+                elif block_type == "assignment":
+                    response_type = str(form.get("response_type") or "text")
+                    if response_type not in {"text", "link", "file"}:
+                        response_type = "text"
+                    settings = json.dumps({"response_type": response_type}, ensure_ascii=False)
                 if action == "course_block_add":
-                    if block_type in {"video", "image"} and not upload_url:
+                    if block_type in {"video", "image", "file"} and not upload_url:
                         raise web.HTTPBadRequest(text="Выберите файл")
                     cur = await db.execute("SELECT COALESCE(MAX(sort_order),-1)+1 FROM mini_app_course_blocks WHERE lesson_id=?", (lesson_id,))
                     order = (await cur.fetchone())[0]
@@ -501,12 +687,12 @@ class CourseAdmin:
                             (material_title, str(form.get("description") or "").strip() or None, content, now, now),
                         )
                         material_id = int(cur.lastrowid)
-                    cur = await db.execute("INSERT INTO mini_app_course_blocks(lesson_id,block_type,title,content,description,settings_json,stored_name,material_id,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)", (lesson_id, block_type, str(form.get("title") or "").strip() or None, upload_url or content, str(form.get("description") or "").strip() or None, settings, stored_name, material_id or None, order, now, now))
+                    cur = await db.execute("INSERT INTO mini_app_course_blocks(lesson_id,block_type,title,content,description,settings_json,stored_name,material_id,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)", (lesson_id, block_type, block_title, upload_url or content, str(form.get("description") or "").strip() or None, settings, stored_name, material_id or None, order, now, now))
                     block_id = int(cur.lastrowid)
                 else:
                     old_content, old_name = row["content"], row["stored_name"]
-                    next_content = upload_url or old_content if block_type in {"video", "image"} else content
-                    await db.execute("UPDATE mini_app_course_blocks SET title=?,content=?,description=?,settings_json=?,stored_name=?,updated_at=? WHERE id=? AND lesson_id=?", (str(form.get("title") or "").strip() or None, next_content, str(form.get("description") or "").strip() or None, settings if block_type == "test" else None, stored_name or old_name, now, block_id, lesson_id))
+                    next_content = upload_url or old_content if block_type in {"video", "image", "file"} else content
+                    await db.execute("UPDATE mini_app_course_blocks SET title=?,content=?,description=?,settings_json=?,stored_name=?,updated_at=? WHERE id=? AND lesson_id=?", (block_title, next_content, str(form.get("description") or "").strip() or None, settings if block_type in {"test", "assignment"} else None, stored_name or old_name, now, block_id, lesson_id))
                     if stored_name and old_name and old_name != stored_name:
                         (self.owner.media_dir / Path(old_name).name).unlink(missing_ok=True)
                 if block_type == "longread" and content:
