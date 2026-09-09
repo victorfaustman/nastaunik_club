@@ -12,10 +12,12 @@ from aiohttp import web
 
 from bot.database import Database
 from bot.learning import (
+    complete_course_lesson,
     complete_lesson,
     complete_material,
     get_bootstrap,
     get_course,
+    get_course_lesson,
     get_material,
     toggle_material_like,
 )
@@ -85,6 +87,8 @@ class MiniApp:
         app.router.add_post("/mini-app/api/material/{material_id}/complete", self.material_complete)
         app.router.add_post("/mini-app/api/material/{material_id}/like", self.material_like)
         app.router.add_get("/mini-app/api/course/{course_id}", self.course)
+        app.router.add_get("/mini-app/api/course/{course_id}/lesson/{lesson_id}", self.course_lesson)
+        app.router.add_post("/mini-app/api/course/{course_id}/lesson/{lesson_id}/complete", self.course_lesson_complete)
         app.router.add_post("/mini-app/api/lesson/{lesson_id}/complete", self.lesson_complete)
 
     async def index(self, request: web.Request) -> web.StreamResponse:
@@ -207,6 +211,34 @@ class MiniApp:
         if not course:
             raise web.HTTPNotFound()
         return web.json_response(course)
+
+    async def course_lesson(self, request: web.Request) -> web.Response:
+        _, _, user = await self.authorised(request)
+        if user["state"] != "active":
+            raise web.HTTPForbidden(text="Active membership is required")
+        try:
+            course_id = int(request.match_info["course_id"])
+            lesson_id = int(request.match_info["lesson_id"])
+        except ValueError:
+            raise web.HTTPNotFound()
+        lesson = await get_course_lesson(self.db, course_id, lesson_id, user["telegram_id"])
+        if not lesson:
+            raise web.HTTPNotFound()
+        return web.json_response(lesson)
+
+    async def course_lesson_complete(self, request: web.Request) -> web.Response:
+        _, _, user = await self.authorised(request)
+        if user["state"] != "active":
+            raise web.HTTPForbidden(text="Active membership is required")
+        try:
+            course_id = int(request.match_info["course_id"])
+            lesson_id = int(request.match_info["lesson_id"])
+        except ValueError:
+            raise web.HTTPNotFound()
+        result = await complete_course_lesson(self.db, course_id, lesson_id, user["telegram_id"])
+        if not result:
+            raise web.HTTPNotFound()
+        return web.json_response(result)
 
     async def lesson_complete(self, request: web.Request) -> web.Response:
         _, _, user = await self.authorised(request)

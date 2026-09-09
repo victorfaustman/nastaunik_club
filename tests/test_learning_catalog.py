@@ -6,7 +6,16 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from bot.database import Database
-from bot.learning import complete_material, get_bootstrap, get_catalog, get_material, toggle_material_like
+from bot.learning import (
+    complete_course_lesson,
+    complete_material,
+    get_bootstrap,
+    get_catalog,
+    get_course,
+    get_course_lesson,
+    get_material,
+    toggle_material_like,
+)
 from bot.learning_admin_v2 import LearningAdmin, clean_rich_text
 from bot.media_embed import youtube_video_id
 
@@ -306,6 +315,109 @@ class LearningCatalogCardTests(unittest.TestCase):
                 unliked = await toggle_material_like(database, material_id, 42)
                 self.assertFalse(unliked["liked"])
                 self.assertEqual(unliked["like_count"], 0)
+
+        asyncio.run(check())
+
+    def test_course_flow_resumes_and_completes_required_lessons(self):
+        async def check():
+            with tempfile.TemporaryDirectory() as directory:
+                database_path = Path(directory) / "mini.db"
+                database = Database(database_path)
+                await database.init()
+                await database.upsert_user(42, "student", "Student")
+                stamp = datetime.utcnow().isoformat(timespec="seconds")
+                async with database.connect() as conn:
+                    cursor = await conn.execute(
+                        """INSERT INTO mini_app_courses(title,description,status,sort_order,created_at,updated_at)
+                           VALUES(?,?,'published',0,?,?)""",
+                        ("Практический курс", "Описание", stamp, stamp),
+                    )
+                    course_id = int(cursor.lastrowid)
+                    cursor = await conn.execute(
+                        """INSERT INTO mini_app_course_modules(course_id,title,sort_order,created_at,updated_at)
+                           VALUES(?,?,0,?,?)""",
+                        (course_id, "Основы", stamp, stamp),
+                    )
+                    module_id = int(cursor.lastrowid)
+                    lesson_ids = []
+                    for order, (title, required) in enumerate(
+                        [("Первый урок", 1), ("Дополнительный урок", 0), ("Финальный урок", 1)]
+                    ):
+                        cursor = await conn.execute(
+                            """INSERT INTO mini_app_course_units(
+                                   course_id,module_id,title,is_required,sort_order,created_at,updated_at
+                               ) VALUES(?,?,?,?,?,?,?)""",
+                            (course_id, module_id, title, required, order, stamp, stamp),
+                        )
+                        lesson_ids.append(int(cursor.lastrowid))
+                    cursor = await conn.execute(
+                        """INSERT INTO mini_app_materials(
+                               title,short_description,full_description,library_visible,status,sort_order,created_at,updated_at
+                           ) VALUES(?,?,?,0,'published',0,?,?)""",
+                        ("Лонгрид урока", "Введение", "<p>Текст урока</p>", stamp, stamp),
+                    )
+                    material_id = int(cursor.lastrowid)
+                    await conn.execute(
+                        """INSERT INTO mini_app_course_blocks(
+                               lesson_id,block_type,material_id,sort_order,created_at,updated_at
+                           ) VALUES(?,'longread',?,0,?,?)""",
+                        (lesson_ids[0], material_id, stamp, stamp),
+                    )
+                    await conn.execute(
+                        """INSERT INTO mini_app_course_blocks(
+                               lesson_id,block_type,content,settings_json,sort_order,created_at,updated_at
+                           ) VALUES(?,'test',?,?,0,?,?)""",
+                        (
+                            lesson_ids[2],
+                            "Главный вопрос",
+                            '{"options":["Первый","Второй"],"correct":0}',
+                            stamp,
+                            stamp,
+                        ),
+                    )
+                    await conn.commit()
+
+                payload = await get_bootstrap(database, {"telegram_id": 42, "state": "active"})
+                summary = payload["courses"][0]
+                self.assertEqual(summary["lesson_count"], 3)
+                self.assertEqual(summary["required_count"], 2)
+                self.assertEqual(summary["progress"], 0)
+                self.assertFalse(summary["started"])
+                self.assertEqual(summary["resume_lesson_id"], lesson_ids[0])
+
+                lesson = await get_course_lesson(database, course_id, lesson_ids[0], 42)
+                self.assertEqual(lesson["position"], 1)
+                self.assertEqual(lesson["next_lesson_id"], lesson_ids[1])
+                self.assertEqual(lesson["blocks"][0]["content"], "<p>Текст урока</p>")
+                opened_course = await get_course(database, course_id, 42)
+                self.assertTrue(opened_course["started"])
+                self.assertEqual(opened_course["resume_lesson_id"], lesson_ids[0])
+
+                first = await complete_course_lesson(database, course_id, lesson_ids[0], 42)
+                self.assertEqual(first["progress"], 50)
+                self.assertEqual(first["next_lesson_id"], lesson_ids[1])
+                self.assertFalse(first["completed"])
+
+                optional = await complete_course_lesson(database, course_id, lesson_ids[1], 42)
+                self.assertEqual(optional["progress"], 50)
+                self.assertEqual(optional["next_lesson_id"], lesson_ids[2])
+
+                final = await complete_course_lesson(database, course_id, lesson_ids[2], 42)
+                self.assertEqual(final["progress"], 100)
+                self.assertTrue(final["completed"])
+                self.assertTrue(final["is_last"])
+                completed_course = await get_course(database, course_id, 42)
+                self.assertTrue(completed_course["completed"])
+                self.assertEqual(completed_course["resume_lesson_id"], lesson_ids[0])
+                self.assertTrue(all(item["completed"] for item in completed_course["lessons"]))
+
+                async with database.connect() as conn:
+                    state_row = await (await conn.execute(
+                        "SELECT * FROM mini_app_course_user_state WHERE telegram_id=? AND course_id=?",
+                        (42, course_id),
+                    )).fetchone()
+                self.assertEqual(state_row["last_lesson_id"], lesson_ids[2])
+                self.assertIsNotNone(state_row["completed_at"])
 
         asyncio.run(check())
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from html.parser import HTMLParser
 from typing import Any
@@ -179,8 +180,15 @@ async def get_bootstrap(db: Database, user: dict[str, Any]) -> dict[str, Any]:
         home = [dict(row) for row in await cur.fetchall()]
         cur = await conn.execute("SELECT * FROM mini_app_consultation WHERE id=1")
         consultation = dict(await cur.fetchone() or {})
+    course_telegram_id = 0 if user.get("test_mode") else int(user["telegram_id"])
+    course_summaries = []
+    for course in courses:
+        detail = await get_course(db, int(course["id"]), course_telegram_id)
+        if detail:
+            detail.pop("lessons", None)
+            course_summaries.append(detail)
     return {"user": user, "settings": settings, "home": home, "materials": catalog["materials"],
-            "categories": catalog["categories"], "tags": catalog["tags"], "courses": courses,
+            "categories": catalog["categories"], "tags": catalog["tags"], "courses": course_summaries,
             "consultation": consultation}
 
 
@@ -276,30 +284,200 @@ async def toggle_material_like(db: Database, material_id: int, telegram_id: int)
         return {"ok": True, "liked": not liked, "like_count": (await cur.fetchone())[0]}
 
 
+async def _course_lessons(conn, course_id: int) -> list[dict[str, Any]]:
+    cur = await conn.execute(
+        """SELECT l.*,m.title AS module_title,m.sort_order AS module_sort_order
+           FROM mini_app_course_units l
+           LEFT JOIN mini_app_course_modules m ON m.id=l.module_id
+           WHERE l.course_id=?
+           ORDER BY CASE WHEN l.module_id IS NULL THEN 0 ELSE 1 END,
+                    COALESCE(m.sort_order,-1),l.sort_order,l.id""",
+        (course_id,),
+    )
+    return [dict(row) for row in await cur.fetchall()]
+
+
+def _course_progress(lessons: list[dict[str, Any]], completed: set[int]) -> dict[str, Any]:
+    required = [lesson for lesson in lessons if lesson.get("is_required")]
+    counted = required or lessons
+    completed_count = sum(1 for lesson in counted if lesson["id"] in completed)
+    total = len(counted)
+    return {
+        "progress": round(completed_count / total * 100) if total else 0,
+        "completed": bool(total and completed_count == total),
+        "completed_count": completed_count,
+        "required_count": total,
+    }
+
+
+async def _completed_course_units(conn, course_id: int, telegram_id: int) -> set[int]:
+    if not telegram_id:
+        return set()
+    cur = await conn.execute(
+        """SELECT p.lesson_id FROM mini_app_course_unit_progress p
+           JOIN mini_app_course_units l ON l.id=p.lesson_id
+           WHERE p.telegram_id=? AND l.course_id=? AND p.completed_at IS NOT NULL""",
+        (telegram_id, course_id),
+    )
+    return {int(row["lesson_id"]) for row in await cur.fetchall()}
+
+
 async def get_course(db: Database, course_id: int, telegram_id: int) -> dict[str, Any] | None:
     async with db.connect() as conn:
         cur = await conn.execute("SELECT * FROM mini_app_courses WHERE id=? AND status='published'", (course_id,))
         course = await cur.fetchone()
         if not course:
             return None
-        cur = await conn.execute(
-            """SELECT l.*, m.title, m.short_description, m.cover_url, m.telegram_url
-               FROM mini_app_course_lessons l JOIN mini_app_materials m ON m.id=l.material_id
-               WHERE l.course_id=? AND m.status='published' ORDER BY l.sort_order, l.id""", (course_id,)
-        )
-        lessons = [dict(row) for row in await cur.fetchall()]
-        cur = await conn.execute(
-            "SELECT lesson_id FROM mini_app_user_progress WHERE telegram_id=? AND lesson_id IN (SELECT id FROM mini_app_course_lessons WHERE course_id=?)",
-            (telegram_id, course_id),
-        )
-        completed = {row["lesson_id"] for row in await cur.fetchall()}
+        lessons = await _course_lessons(conn, course_id)
+        completed = await _completed_course_units(conn, course_id, telegram_id)
+        state = None
+        if telegram_id:
+            cur = await conn.execute(
+                "SELECT * FROM mini_app_course_user_state WHERE telegram_id=? AND course_id=?",
+                (telegram_id, course_id),
+            )
+            state = await cur.fetchone()
+        lesson_ids = {lesson["id"] for lesson in lessons}
+        last_lesson_id = int(state["last_lesson_id"]) if state and state["last_lesson_id"] in lesson_ids else None
+        if last_lesson_id in completed:
+            last_lesson_id = None
+        resume_lesson_id = last_lesson_id
+        if resume_lesson_id is None:
+            resume_lesson_id = next((lesson["id"] for lesson in lessons if lesson["is_required"] and lesson["id"] not in completed), None)
+        if resume_lesson_id is None:
+            resume_lesson_id = next((lesson["id"] for lesson in lessons if lesson["id"] not in completed), None)
+        if resume_lesson_id is None and lessons:
+            resume_lesson_id = lessons[0]["id"]
+        progress = _course_progress(lessons, completed)
         result = dict(course)
-        result["lessons"] = [{**lesson, "completed": lesson["id"] in completed} for lesson in lessons]
-        result["progress"] = round(len(completed) / len(lessons) * 100) if lessons else 0
+        result.update(progress)
+        result["started"] = bool(state or completed)
+        result["resume_lesson_id"] = resume_lesson_id
+        result["lesson_count"] = len(lessons)
+        result["lessons"] = [
+            {
+                **lesson,
+                "position": index + 1,
+                "completed": lesson["id"] in completed,
+            }
+            for index, lesson in enumerate(lessons)
+        ]
         return result
 
 
+async def get_course_lesson(
+    db: Database, course_id: int, lesson_id: int, telegram_id: int, *, track: bool = True
+) -> dict[str, Any] | None:
+    if track and telegram_id:
+        stamp = now_iso()
+        async with db.connect() as conn:
+            cur = await conn.execute(
+                """SELECT l.id FROM mini_app_course_units l
+                   JOIN mini_app_courses c ON c.id=l.course_id
+                   WHERE l.id=? AND l.course_id=? AND c.status='published'""",
+                (lesson_id, course_id),
+            )
+            if not await cur.fetchone():
+                return None
+            await conn.execute(
+                """INSERT INTO mini_app_course_unit_progress(telegram_id,lesson_id,started_at)
+                   VALUES(?,?,?) ON CONFLICT(telegram_id,lesson_id) DO NOTHING""",
+                (telegram_id, lesson_id, stamp),
+            )
+            await conn.execute(
+                """INSERT INTO mini_app_course_user_state(telegram_id,course_id,last_lesson_id,started_at,updated_at)
+                   VALUES(?,?,?,?,?) ON CONFLICT(telegram_id,course_id) DO UPDATE SET
+                   last_lesson_id=excluded.last_lesson_id,updated_at=excluded.updated_at""",
+                (telegram_id, course_id, lesson_id, stamp, stamp),
+            )
+            await conn.commit()
+    course = await get_course(db, course_id, telegram_id)
+    if not course:
+        return None
+    lesson = next((item for item in course["lessons"] if item["id"] == lesson_id), None)
+    if not lesson:
+        return None
+    async with db.connect() as conn:
+        cur = await conn.execute(
+            """SELECT b.*,m.title AS material_title,m.short_description AS material_description,
+                      m.full_description AS material_content
+               FROM mini_app_course_blocks b
+               LEFT JOIN mini_app_materials m ON m.id=b.material_id
+               WHERE b.lesson_id=? ORDER BY b.sort_order,b.id""",
+            (lesson_id,),
+        )
+        blocks = []
+        for row in await cur.fetchall():
+            block = dict(row)
+            if block["block_type"] == "longread" and block.get("material_id"):
+                block["title"] = block.get("material_title") or block.get("title")
+                block["description"] = block.get("material_description") or block.get("description")
+                block["content"] = block.get("material_content") or block.get("content") or ""
+            if block["block_type"] == "test":
+                try:
+                    block["settings"] = json.loads(block.get("settings_json") or "{}")
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    block["settings"] = {}
+            for key in ("settings_json", "stored_name", "material_title", "material_description", "material_content"):
+                block.pop(key, None)
+            blocks.append(block)
+    lessons = course["lessons"]
+    index = next(index for index, item in enumerate(lessons) if item["id"] == lesson_id)
+    lesson["blocks"] = blocks
+    lesson["previous_lesson_id"] = lessons[index - 1]["id"] if index else None
+    lesson["next_lesson_id"] = lessons[index + 1]["id"] if index + 1 < len(lessons) else None
+    lesson["total_lessons"] = len(lessons)
+    lesson["course"] = {
+        "id": course["id"],
+        "title": course["title"],
+        "progress": course["progress"],
+        "completed": course["completed"],
+    }
+    return lesson
+
+
+async def complete_course_lesson(db: Database, course_id: int, lesson_id: int, telegram_id: int) -> dict[str, Any] | None:
+    stamp = now_iso()
+    async with db.connect() as conn:
+        cur = await conn.execute(
+            """SELECT l.id FROM mini_app_course_units l JOIN mini_app_courses c ON c.id=l.course_id
+               WHERE l.id=? AND l.course_id=? AND c.status='published'""",
+            (lesson_id, course_id),
+        )
+        if not await cur.fetchone():
+            return None
+        await conn.execute(
+            """INSERT INTO mini_app_course_unit_progress(telegram_id,lesson_id,started_at,completed_at)
+               VALUES(?,?,?,?) ON CONFLICT(telegram_id,lesson_id) DO UPDATE SET
+               completed_at=COALESCE(mini_app_course_unit_progress.completed_at,excluded.completed_at)""",
+            (telegram_id, lesson_id, stamp, stamp),
+        )
+        await conn.commit()
+        lessons = await _course_lessons(conn, course_id)
+        completed = await _completed_course_units(conn, course_id, telegram_id)
+        progress = _course_progress(lessons, completed)
+        index = next(index for index, lesson in enumerate(lessons) if lesson["id"] == lesson_id)
+        next_lesson_id = lessons[index + 1]["id"] if index + 1 < len(lessons) else None
+        await conn.execute(
+            """INSERT INTO mini_app_course_user_state(
+                   telegram_id,course_id,last_lesson_id,started_at,updated_at,completed_at
+               ) VALUES(?,?,?,?,?,?) ON CONFLICT(telegram_id,course_id) DO UPDATE SET
+                   last_lesson_id=excluded.last_lesson_id,updated_at=excluded.updated_at,
+                   completed_at=COALESCE(mini_app_course_user_state.completed_at,excluded.completed_at)""",
+            (telegram_id, course_id, lesson_id, stamp, stamp, stamp if progress["completed"] else None),
+        )
+        await conn.commit()
+        return {
+            "ok": True,
+            "lesson_id": lesson_id,
+            "next_lesson_id": next_lesson_id,
+            "is_last": next_lesson_id is None,
+            **progress,
+        }
+
+
 async def complete_lesson(db: Database, telegram_id: int, lesson_id: int) -> None:
+    """Compatibility path for courses created with the original material-based builder."""
     async with db.connect() as conn:
         await conn.execute(
             "INSERT OR REPLACE INTO mini_app_user_progress(telegram_id, lesson_id, completed_at) VALUES(?,?,?)",

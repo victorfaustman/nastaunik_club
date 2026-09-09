@@ -376,6 +376,32 @@ class Database:
                     FOREIGN KEY (lesson_id) REFERENCES mini_app_course_lessons(id) ON DELETE CASCADE
                 );
 
+                CREATE TABLE IF NOT EXISTS mini_app_course_unit_progress (
+                    telegram_id INTEGER NOT NULL,
+                    lesson_id INTEGER NOT NULL,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT,
+                    PRIMARY KEY (telegram_id, lesson_id),
+                    FOREIGN KEY (telegram_id) REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    FOREIGN KEY (lesson_id) REFERENCES mini_app_course_units(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_mini_app_course_unit_progress_lesson
+                    ON mini_app_course_unit_progress(lesson_id, completed_at);
+
+                CREATE TABLE IF NOT EXISTS mini_app_course_user_state (
+                    telegram_id INTEGER NOT NULL,
+                    course_id INTEGER NOT NULL,
+                    last_lesson_id INTEGER,
+                    started_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    completed_at TEXT,
+                    PRIMARY KEY (telegram_id, course_id),
+                    FOREIGN KEY (telegram_id) REFERENCES users(telegram_id) ON DELETE CASCADE,
+                    FOREIGN KEY (course_id) REFERENCES mini_app_courses(id) ON DELETE CASCADE,
+                    FOREIGN KEY (last_lesson_id) REFERENCES mini_app_course_units(id) ON DELETE SET NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS mini_app_favorites (
                     telegram_id INTEGER NOT NULL,
                     material_id INTEGER NOT NULL,
