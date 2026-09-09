@@ -24,6 +24,7 @@ from bot.learning_admin_v2 import LearningAdmin
 from bot.mini_app import MiniApp
 
 DEFAULT_AMOUNT_LABEL = "10 BYN / месяц"
+ADMIN_UPLOAD_LIMIT_BYTES = 500 * 1024 * 1024
 AMOUNT_RE = re.compile(r"(\d+(?:[.,]\d+)?)")
 MONTH_NAMES = {
     1: "Январь",
@@ -257,7 +258,10 @@ class ClubAdminWebApp:
         )
 
     def build_app(self) -> web.Application:
-        app = web.Application(middlewares=[self.auth_middleware], client_max_size=32 * 1024 * 1024)
+        app = web.Application(
+            middlewares=[self.auth_middleware],
+            client_max_size=ADMIN_UPLOAD_LIMIT_BYTES,
+        )
         app.router.add_get("/", self.dashboard)
         app.router.add_get("/clients", self.clients)
         app.router.add_get("/finance", self.finance_page)

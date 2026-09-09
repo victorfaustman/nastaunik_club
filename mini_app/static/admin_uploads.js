@@ -87,7 +87,10 @@
       xhr.onload = () => {
         activeUploads = Math.max(0, activeUploads - 1);
         if (xhr.status < 200 || xhr.status >= 300) {
-          finishItem(item, 'Не удалось загрузить файл', true);
+          const message = xhr.status === 413
+            ? 'Файл слишком большой · максимум 500 МБ'
+            : 'Не удалось загрузить файл';
+          finishItem(item, message, true);
           reject(new Error(xhr.responseText || 'upload failed'));
           return;
         }
