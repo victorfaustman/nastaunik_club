@@ -183,7 +183,9 @@ button { font: inherit; }
 .lesson-assignment-block textarea, .lesson-assignment-block input { width: 100%; min-height: 48px; padding: 12px; border: 1px solid var(--line); border-radius: 13px; background: var(--bg); color: var(--ink); font: inherit; }
 .lesson-assignment-block textarea { min-height: 110px; resize: vertical; }
 .assignment-status { min-height: 18px; color: #52705a; font-weight: 750; }
-.lesson-navigation { position: sticky; z-index: 2; bottom: calc(8px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: minmax(0,.75fr) minmax(0,1.4fr); gap: 9px; margin: 22px -4px -76px; padding: 9px; border: 1px solid var(--line); border-radius: 19px; background: #fffaf3e8; box-shadow: 0 14px 38px #4d30262b; backdrop-filter: blur(14px); }
+.lesson-navigation { position: sticky; z-index: 2; bottom: calc(8px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: minmax(0,.75fr) minmax(0,1.4fr); gap: 9px; margin: 22px -4px 0; padding: 9px; border: 1px solid var(--line); border-radius: 19px; background: #fffaf3e8; box-shadow: 0 14px 38px #4d30262b; backdrop-filter: blur(14px); }
+.lesson-navigation > span:empty { display: none; }
+.lesson-navigation > span:empty + .lesson-next { grid-column: 1 / -1; }
 .lesson-navigation button { min-width: 0; }
 .lesson-previous { min-height: 48px; padding: 0 12px; border: 0; border-radius: 14px; background: #f1dfd0; color: var(--accent-dark); font-size: 12px; font-weight: 800; cursor: pointer; }
 .lesson-next { min-height: 48px; padding: 0 12px; font-size: 12px; }
