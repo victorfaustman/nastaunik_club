@@ -166,7 +166,7 @@ def create_user_router(db: Database, settings: Settings) -> Router:
             actor_id = target.from_user.id
 
         pilot_mini_app_url = (
-            settings.mini_app_preview_url
+            settings.mini_app_url
             if actor_id is not None and actor_id in settings.mini_app_allowed_ids
             else None
         )
