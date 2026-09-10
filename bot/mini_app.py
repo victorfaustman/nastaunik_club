@@ -21,6 +21,7 @@ from bot.learning import (
     get_bootstrap,
     get_course,
     get_course_lesson,
+    record_course_video_event,
     get_material,
     submit_course_assignment,
     submit_course_review,
@@ -96,6 +97,7 @@ class MiniApp:
         app.router.add_get("/mini-app/api/course/{course_id}/lesson/{lesson_id}", self.course_lesson)
         app.router.add_post("/mini-app/api/course/{course_id}/lesson/{lesson_id}/complete", self.course_lesson_complete)
         app.router.add_post("/mini-app/api/course/{course_id}/lesson/{lesson_id}/test/{block_id}", self.course_test_answer)
+        app.router.add_post("/mini-app/api/course/{course_id}/lesson/{lesson_id}/video/{block_id}/event", self.course_video_event)
         app.router.add_post("/mini-app/api/course/{course_id}/lesson/{lesson_id}/assignment/{block_id}", self.course_assignment_submit)
         app.router.add_post("/mini-app/api/course/{course_id}/like", self.course_like)
         app.router.add_post("/mini-app/api/course/{course_id}/review", self.course_review)
@@ -357,7 +359,28 @@ class MiniApp:
         result = await complete_course_lesson(self.db, course_id, lesson_id, user["telegram_id"])
         if not result:
             raise web.HTTPNotFound()
+        if result.get("blocked"):
+            return web.json_response(result, status=409)
         return web.json_response(result)
+
+    async def course_video_event(self, request: web.Request) -> web.Response:
+        _, _, user = await self.authorised(request)
+        if user["state"] != "active":
+            raise web.HTTPForbidden(text="Active membership is required")
+        try:
+            payload = await request.json()
+            course_id = int(request.match_info["course_id"])
+            lesson_id = int(request.match_info["lesson_id"])
+            block_id = int(request.match_info["block_id"])
+            event_type = str(payload.get("event_type") or "")
+            position = float(payload.get("position_seconds") or 0)
+            duration = float(payload.get("duration_seconds") or 0)
+        except (ValueError, TypeError, json.JSONDecodeError):
+            raise web.HTTPBadRequest(text="Некорректное событие видео")
+        if user.get("test_mode"):
+            return web.json_response({"ok": True, "test_mode": user["test_mode"]})
+        ok = await record_course_video_event(self.db, course_id, lesson_id, block_id, user["telegram_id"], event_type, position, duration)
+        return web.json_response({"ok": ok})
 
     async def course_test_answer(self, request: web.Request) -> web.Response:
         _, _, user = await self.authorised(request)

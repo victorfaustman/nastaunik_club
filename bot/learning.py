@@ -440,7 +440,8 @@ async def get_course_lesson(
     async with db.connect() as conn:
         cur = await conn.execute(
             """SELECT b.*,m.title AS material_title,m.short_description AS material_description,
-                      m.full_description AS material_content,j.poster_name AS video_poster_name
+                      m.full_description AS material_content,j.poster_name AS video_poster_name,
+                      j.status AS video_status
                FROM mini_app_course_blocks b
                LEFT JOIN mini_app_materials m ON m.id=b.material_id
                LEFT JOIN mini_app_video_jobs j ON j.stored_name=b.stored_name
@@ -456,12 +457,15 @@ async def get_course_lesson(
                 block["content"] = block.get("material_content") or block.get("content") or ""
             if block["block_type"] == "video" and block.get("video_poster_name"):
                 block["poster_url"] = f"/mini-app/media/{Path(block['video_poster_name']).name}"
+            if block["block_type"] == "video":
+                block["video_status"] = block.get("video_status") or "ready"
+                block["video_ready"] = block["video_status"] == "ready"
             if block["block_type"] == "test":
                 try:
                     settings = json.loads(block.get("settings_json") or "{}")
                 except (TypeError, ValueError, json.JSONDecodeError):
                     settings = {}
-                block["settings"] = {"options": list(settings.get("options") or [])}
+                block["settings"] = {"options": list(settings.get("options") or []), "required": settings.get("required", True)}
             elif block["block_type"] == "assignment":
                 try:
                     settings = json.loads(block.get("settings_json") or "{}")
@@ -511,6 +515,25 @@ async def complete_course_lesson(db: Database, course_id: int, lesson_id: int, t
         )
         if not await cur.fetchone():
             return None
+        test_cur = await conn.execute(
+            """SELECT id,settings_json FROM mini_app_course_blocks
+               WHERE lesson_id=? AND block_type='test' ORDER BY sort_order,id""",
+            (lesson_id,),
+        )
+        for test in await test_cur.fetchall():
+            try:
+                test_settings = json.loads(test["settings_json"] or "{}")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                test_settings = {}
+            if not test_settings.get("required", True):
+                continue
+            passed_cur = await conn.execute(
+                """SELECT 1 FROM mini_app_course_test_attempts
+                   WHERE telegram_id=? AND block_id=? AND is_correct=1 LIMIT 1""",
+                (telegram_id, test["id"]),
+            )
+            if not await passed_cur.fetchone():
+                return {"ok": False, "blocked": True, "reason": "Сначала ответьте на все обязательные вопросы правильно."}
         await conn.execute(
             """INSERT INTO mini_app_course_unit_progress(telegram_id,lesson_id,started_at,completed_at)
                VALUES(?,?,?,?) ON CONFLICT(telegram_id,lesson_id) DO UPDATE SET
@@ -539,6 +562,37 @@ async def complete_course_lesson(db: Database, course_id: int, lesson_id: int, t
             "is_last": next_lesson_id is None,
             **progress,
         }
+
+
+async def record_course_video_event(
+    db: Database,
+    course_id: int,
+    lesson_id: int,
+    block_id: int,
+    telegram_id: int,
+    event_type: str,
+    position_seconds: float = 0,
+    duration_seconds: float = 0,
+) -> bool:
+    if event_type not in {"start", "progress", "pause", "complete", "error"} or not telegram_id:
+        return False
+    async with db.connect() as conn:
+        row = await (await conn.execute(
+            """SELECT 1 FROM mini_app_course_blocks b JOIN mini_app_course_units l ON l.id=b.lesson_id
+               WHERE b.id=? AND b.lesson_id=? AND l.course_id=? AND b.block_type='video'""",
+            (block_id, lesson_id, course_id),
+        )).fetchone()
+        if not row:
+            return False
+        await conn.execute(
+            """INSERT INTO mini_app_course_video_events(
+                telegram_id,course_id,lesson_id,block_id,event_type,position_seconds,duration_seconds,created_at
+            ) VALUES(?,?,?,?,?,?,?,?)""",
+            (telegram_id, course_id, lesson_id, block_id, event_type,
+             max(0, float(position_seconds or 0)), max(0, float(duration_seconds or 0)), now_iso()),
+        )
+        await conn.commit()
+    return True
 
 
 async def answer_course_test(

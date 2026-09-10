@@ -550,6 +550,21 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_mini_app_video_jobs_status
                     ON mini_app_video_jobs(status, id);
 
+                CREATE TABLE IF NOT EXISTS mini_app_course_video_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    telegram_id INTEGER NOT NULL,
+                    course_id INTEGER NOT NULL,
+                    lesson_id INTEGER NOT NULL,
+                    block_id INTEGER NOT NULL,
+                    event_type TEXT NOT NULL,
+                    position_seconds REAL NOT NULL DEFAULT 0,
+                    duration_seconds REAL NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_course_video_events_block
+                    ON mini_app_course_video_events(course_id, lesson_id, block_id, event_type);
+
                 CREATE TABLE IF NOT EXISTS mini_app_tags (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
