@@ -208,6 +208,18 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .course-reviews { margin-top: 24px; }
 .course-reviews article { margin-top: 8px; padding: 15px 17px; border: 1px solid var(--line); border-radius: 17px; background: var(--paper); }
 .course-reviews article p { margin: 6px 0 0; color: var(--muted); white-space: pre-wrap; }
+/* Visual polish: calmer surfaces, clearer actions, less visual noise. */
+.card, .material-card, .course-card, .course-lesson-row, .lesson-content-block, .lesson-media-block, .lesson-test-block, .lesson-assignment-block, .like-box, .course-feedback { border-color: color-mix(in srgb, var(--line) 72%, transparent); box-shadow: 0 8px 26px #6b49300b; }
+.button { transition: transform .16s ease, background .16s ease, box-shadow .16s ease; box-shadow: 0 6px 16px #9e55441c; }
+.button:hover, .button:focus-visible { background: var(--accent-dark); box-shadow: 0 8px 20px #9e55442e; outline: 0; transform: translateY(-1px); }
+.button:active { transform: translateY(0) scale(.985); }
+.button.secondary:hover, .button.secondary:focus-visible { background: color-mix(in srgb, var(--accent) 16%, var(--paper)); color: var(--accent-dark); }
+.course-lesson-row { box-shadow: 0 5px 18px #6b493008; }
+.course-lesson-row:hover, .course-lesson-row:focus-visible { box-shadow: 0 9px 22px #6b493014; }
+.lesson-media-block video, .lesson-media-block img { background: #201714; }
+.lesson-video-processing { display: grid; gap: 8px; justify-items: start; background: color-mix(in srgb, var(--paper) 88%, var(--accent)); }
+.video-processing-mark { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 15%, var(--paper)); font-size: 22px; }
+.lesson-navigation { border-color: color-mix(in srgb, var(--line) 72%, transparent); }
 @media (max-width: 400px) {
   .test-mode-entry { flex-wrap: wrap; }
   .test-mode-entry > span { width: 100%; text-align: right; }
