@@ -386,8 +386,9 @@ class CourseAdmin:
             await db.close()
         module_options = '<option value="">Без модуля</option>' + "".join(f'<option value="{row["id"]}" {"selected" if row["id"] == lesson["module_id"] else ""}>{esc(row["title"])}</option>' for row in modules)
         block_html = "".join(self.block_card(block, lesson_id, course_id) for block in blocks) or '<div class="empty">Созданные блоки урока появятся здесь.</div>'
+        lesson_preview = f'''<div class="panel"><h2>Предпросмотр урока</h2><p class="hint">Откроется именно этот урок в Mini App.</p><div class="actions"><a class="button secondary" target="_blank" href="/mini-app/preview?course={course_id}&amp;lesson={lesson_id}&amp;mode=paid">Как оплаченный</a><a class="button secondary" target="_blank" href="/mini-app/preview?course={course_id}&amp;lesson={lesson_id}&amp;mode=unpaid">Как неоплаченный</a></div></div>'''
         return web.Response(
-            text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(lesson["title"])} — Nastaunik</title><script defer src="/mini-app/static/admin_uploads.js?v=3"></script><script defer src="/mini-app/static/admin_course.js?v=3"></script><script defer src="/mini-app/static/admin_autosave.js?v=1"></script><style>{self.styles()}</style></head><body><main>{self.tabs("courses")}<a class="back" href="{self.course_url(course_id)}">← {esc(course["title"] if course else "Курс")}</a>{'<div class="saved">Изменения сохранены</div>' if request.query.get('saved') else ''}<div class="top"><div><h1>{esc(lesson["title"])}</h1><p>Соберите урок из блоков в нужном порядке.</p></div></div><div class="course-workspace">{self.course_outline({"id": course_id, "title": course["title"] if course else "Курс"}, modules, lessons, lesson_id)}<div class="layout"><div><section><div class="section-head"><div><h2>Содержание урока</h2><div class="hint">Видео, текст, изображения и тесты можно сочетать.</div></div></div>{self.add_block_form(lesson_id, course_id)}<div class="lesson-blocks">{block_html}</div></section></div><aside><form class="panel sticky" data-autosave data-autosave-id="{lesson_id}" method="post" action="{self.action_url}"><input type="hidden" name="action" value="course_lesson_save"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><h2>Настройки урока</h2><label class="field">Название<input name="title" value="{esc(lesson["title"])}" required></label><label class="field">Краткое описание<textarea name="description">{esc(lesson["description"] or "")}</textarea></label><label class="field">Раздел<select name="module_id">{module_options}</select></label><label class="checkbox"><input type="checkbox" name="is_required" value="1" {"checked" if lesson["is_required"] else ""}><span><b>Обязательный урок</b><br><span class="hint">Учитывается в прогрессе курса.</span></span></label><div style="margin-top:20px;padding-top:17px;border-top:1px solid var(--line)"><h3>Кнопки перехода</h3><p class="hint" style="margin:4px 0 10px;font-size:12px">Оставьте поле пустым, чтобы использовать стандартную надпись.</p><label class="field">Назад<input name="previous_button_label" maxlength="80" value="{esc(lesson["previous_button_label"] or "")}" placeholder="← Предыдущий"></label><label class="field">К следующему уроку<input name="next_button_label" maxlength="80" value="{esc(lesson["next_button_label"] or "")}" placeholder="Завершить урок и продолжить"></label><label class="field">На последнем уроке<input name="finish_button_label" maxlength="80" value="{esc(lesson["finish_button_label"] or "")}" placeholder="Завершить курс"></label></div><span class="autosave-state" data-save-state>Изменения сохраняются автоматически</span><button style="margin-top:8px">Сохранить урок</button></form>{history}</aside></div></div>{self.tree_script(course_id)}</main></body></html>''',
+            text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(lesson["title"])} — Nastaunik</title><script defer src="/mini-app/static/admin_uploads.js?v=3"></script><script defer src="/mini-app/static/admin_course.js?v=4"></script><script defer src="/mini-app/static/admin_autosave.js?v=1"></script><style>{self.styles()}</style></head><body><main>{self.tabs("courses")}<a class="back" href="{self.course_url(course_id)}">← {esc(course["title"] if course else "Курс")}</a>{'<div class="saved">Изменения сохранены</div>' if request.query.get('saved') else ''}<div class="top"><div><h1>{esc(lesson["title"])}</h1><p>Соберите урок из блоков в нужном порядке.</p></div></div><div class="course-workspace">{self.course_outline({"id": course_id, "title": course["title"] if course else "Курс"}, modules, lessons, lesson_id)}<div class="layout"><div><section><div class="section-head"><div><h2>Содержание урока</h2><div class="hint">Видео, текст, изображения и тесты можно сочетать.</div></div></div>{self.add_block_form(lesson_id, course_id)}<div class="lesson-blocks">{block_html}</div></section></div><aside>{lesson_preview}<form class="panel sticky" data-autosave data-autosave-id="{lesson_id}" method="post" action="{self.action_url}"><input type="hidden" name="action" value="course_lesson_save"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><h2>Настройки урока</h2><label class="field">Название<input name="title" value="{esc(lesson["title"])}" required></label><label class="field">Краткое описание<textarea name="description">{esc(lesson["description"] or "")}</textarea></label><label class="field">Раздел<select name="module_id">{module_options}</select></label><label class="checkbox"><input type="checkbox" name="is_required" value="1" {"checked" if lesson["is_required"] else ""}><span><b>Обязательный урок</b><br><span class="hint">Учитывается в прогрессе курса.</span></span></label><div style="margin-top:20px;padding-top:17px;border-top:1px solid var(--line)"><h3>Кнопки перехода</h3><p class="hint" style="margin:4px 0 10px;font-size:12px">Оставьте поле пустым, чтобы использовать стандартную надпись.</p><label class="field">Назад<input name="previous_button_label" maxlength="80" value="{esc(lesson["previous_button_label"] or "")}" placeholder="← Предыдущий"></label><label class="field">К следующему уроку<input name="next_button_label" maxlength="80" value="{esc(lesson["next_button_label"] or "")}" placeholder="Завершить урок и продолжить"></label><label class="field">На последнем уроке<input name="finish_button_label" maxlength="80" value="{esc(lesson["finish_button_label"] or "")}" placeholder="Завершить курс"></label></div><span class="autosave-state" data-save-state>Изменения сохраняются автоматически</span><button style="margin-top:8px">Сохранить урок</button></form>{history}</aside></div></div>{self.tree_script(course_id)}</main></body></html>''',
             content_type="text/html",
         )
 
@@ -401,7 +402,7 @@ class CourseAdmin:
         if block_type == "video" and block["content"]:
             video_status = block.get("video_status") or "ready"
             status_labels = {"waiting_save":"Ожидает сохранения", "queued":"В очереди на обработку", "processing":"Обрабатывается", "failed":"Ошибка обработки", "ready":"Готово"}
-            status = f'<div class="video-status video-status-{esc(video_status)}" data-video-status="{esc(video_status)}">{esc(status_labels.get(video_status, video_status))}</div>'
+            status = f'<div class="video-status video-status-{esc(video_status)}" data-video-status="{esc(video_status)}" data-video-block-id="{block["id"]}">{esc(status_labels.get(video_status, video_status))}</div>'
             retry = '' if video_status != 'failed' else f'<button type="submit" name="action" value="course_video_retry" class="secondary">Повторить обработку</button>'
             poster = f' poster="/mini-app/media/{esc(Path(block["video_poster_name"]).name)}"' if block.get("video_poster_name") else ''
             controls = ' controls' if video_status == 'ready' else ''
@@ -833,6 +834,22 @@ class CourseAdmin:
                        completed_at=NULL,poster_name=NULL,updated_at=? WHERE stored_name=?""",
                     (now, row["stored_name"]),
                 )
+            elif action == "course_video_status":
+                block_id = int(form.get("block_id") or 0)
+                row = await (await db.execute(
+                    """SELECT b.stored_name,j.status,j.error,j.poster_name
+                       FROM mini_app_course_blocks b LEFT JOIN mini_app_video_jobs j ON j.stored_name=b.stored_name
+                       WHERE b.id=? AND b.lesson_id=? AND b.block_type='video'""",
+                    (block_id, lesson_id),
+                )).fetchone()
+                if not row:
+                    raise web.HTTPNotFound(text="Видео не найдено")
+                status_result = {
+                    "ok": True,
+                    "status": row["status"] or "ready",
+                    "error": row["error"],
+                    "poster_url": f"/mini-app/media/{Path(row['poster_name']).name}" if row["poster_name"] else None,
+                }
             elif action in {"course_block_add", "course_block_save"}:
                 block_id = int(form.get("block_id") or 0)
                 block_type = str(form.get("block_type") or "")
@@ -920,6 +937,8 @@ class CourseAdmin:
             raise web.HTTPSeeOther(location=self.courses_url())
         if action == "course_inline_upload":
             return web.json_response(inline_result or {"ok": False}, status=200 if inline_result else 400)
+        if action == "course_video_status":
+            return web.json_response(status_result)
         if action == "course_tree_move" and form.get("ajax") == "1":
             return web.json_response({"ok": True})
         if action in {"course_save", "course_lesson_save"} and form.get("ajax") == "1":

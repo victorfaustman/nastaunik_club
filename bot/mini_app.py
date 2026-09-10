@@ -110,6 +110,7 @@ class MiniApp:
         mode = "unpaid" if request.query.get("mode") == "unpaid" else "paid"
         try:
             course_id = int(request.query.get("course") or 0)
+            lesson_id = int(request.query.get("lesson") or 0)
         except ValueError:
             raise web.HTTPNotFound()
         user = {
@@ -130,7 +131,7 @@ class MiniApp:
         preview_courses: dict[str, dict] = {}
         preview_lessons: dict[str, dict] = {}
         preview_test_answers: dict[str, dict] = {}
-        if mode == "paid" and course_id:
+        if course_id and (mode == "paid" or lesson_id):
             preview_ids = [course_id]
             course = await get_course(self.db, course_id, 0)
             if course and course.get("next_course_id"):
@@ -177,6 +178,7 @@ class MiniApp:
             "lessons": preview_lessons,
             "testAnswers": preview_test_answers,
             "courseId": course_id,
+            "lessonId": lesson_id,
         }
         injected = json.dumps(values, ensure_ascii=False).replace("</", "<\\/")
         html = (MINI_APP_DIR / "index.html").read_text(encoding="utf-8")

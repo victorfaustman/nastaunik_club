@@ -203,6 +203,38 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  const videoStatuses = [...document.querySelectorAll('[data-video-status][data-video-block-id]')];
+  if (videoStatuses.length) {
+    const labels = { waiting_save: 'Ожидает сохранения', queued: 'В очереди на обработку', processing: 'Обрабатывается', failed: 'Ошибка обработки', ready: 'Готово' };
+    const poll = async () => {
+      let pending = false;
+      for (const status of videoStatuses) {
+        const form = status.closest('form');
+        if (!form) continue;
+        const data = new FormData();
+        data.set('action', 'course_video_status');
+        data.set('course_id', form.elements.course_id.value);
+        data.set('lesson_id', form.elements.lesson_id.value);
+        data.set('block_id', status.dataset.videoBlockId);
+        data.set('ajax', '1');
+        try {
+          const response = await fetch(form.action, { method: 'POST', body: data });
+          if (!response.ok) continue;
+          const value = await response.json();
+          const next = value.status || 'ready';
+          status.textContent = labels[next] || next;
+          status.className = `video-status video-status-${next}`;
+          if (next === 'ready') {
+            const video = form.querySelector('video');
+            if (video) { video.controls = true; if (value.poster_url) video.poster = value.poster_url; video.load(); }
+          } else if (next === 'queued' || next === 'processing' || next === 'waiting_save') pending = true;
+        } catch (_) { pending = true; }
+      }
+      if (pending) window.setTimeout(poll, 2500);
+    };
+    window.setTimeout(poll, 1200);
+  }
+
   const uploadOverlay = document.createElement('div');
   uploadOverlay.className = 'course-upload-overlay';
   uploadOverlay.innerHTML = '<div class="course-upload-box"><b>Загружаем файл…</b><div class="course-upload-track"><i></i></div></div>';
