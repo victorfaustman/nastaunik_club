@@ -368,6 +368,12 @@ class CourseAdmin:
                    WHERE b.lesson_id=? ORDER BY b.sort_order,b.id""",
                 (lesson_id,),
             )
+            for block in blocks:
+                block["block_history"] = await self.owner.revision_history_html(
+                    db, "block", int(block["id"]),
+                    action="course_revision_restore",
+                    hidden_fields=f'<input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><input type="hidden" name="block_id" value="{block["id"]}">',
+                )
             history = await self.owner.revision_history_html(
                 db,
                 "lesson",
@@ -388,6 +394,7 @@ class CourseAdmin:
         from bot.learning_admin_v2 import clean_rich_text
 
         block_type = block["block_type"]
+        block_history = block.get("block_history") or ""
         settings = json.loads(block["settings_json"] or "{}") if block["settings_json"] else {}
         preview = ""
         if block_type == "video" and block["content"]:
@@ -404,7 +411,7 @@ class CourseAdmin:
             material_title = block["material_title"] or "Лонгрид"
             material_description = block["material_description"] or "Откройте, чтобы добавить текст, обложку, теги и дополнительные файлы."
             fields = f'''<div style="padding:18px 0 8px"><h2>{esc(material_title)}</h2><p class="hint">{esc(material_description)}</p><a class="button" href="{self.course_material_url(block["material_id"], course_id, lesson_id, block["id"])}">Открыть редактор лонгрида</a></div>'''
-            return f'''<article class="block-card"><span class="block-type">Лонгрид</span>{fields}<form method="post" action="{self.action_url}" style="position:absolute;right:16px;top:16px" onsubmit="return confirm('Удалить лонгрид?')"><input type="hidden" name="action" value="course_block_delete"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><input type="hidden" name="block_id" value="{block["id"]}"><button class="ghost" title="Удалить блок">×</button></form></article>'''
+            return f'''<article class="block-card"><span class="block-type">Лонгрид</span>{fields}{block_history}<form method="post" action="{self.action_url}" style="position:absolute;right:16px;top:16px" onsubmit="return confirm('Удалить лонгрид?')"><input type="hidden" name="action" value="course_block_delete"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><input type="hidden" name="block_id" value="{block["id"]}"><button class="ghost" title="Удалить блок">×</button></form></article>'''
         if block_type == "longread":
             fields = f'''<div class="course-longread"><p class="hint">Можно вставить готовый пост — абзацы, списки, ссылки и форматирование сохранятся.</p><div class="course-toolbar"><button type="button" data-cmd="undo" title="Отменить">↶</button><button type="button" data-cmd="redo" title="Повторить">↷</button><button type="button" data-cmd="bold"><b>Ж</b></button><button type="button" data-cmd="italic"><i>К</i></button><button type="button" data-cmd="formatBlock" data-value="h2">Заголовок</button><button type="button" data-cmd="formatBlock" data-value="blockquote">Цитата</button><button type="button" data-cmd="insertUnorderedList">• Список</button><button type="button" data-cmd="insertOrderedList">1. Список</button><button type="button" data-divider>Разделитель</button><button type="button" data-link>Ссылка</button><button type="button" class="media-button" data-media>＋ Фото/видео</button><input class="inline-media-file" type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.mp4" hidden><button type="button" data-cmd="removeFormat">Очистить</button></div><div class="course-editor" contenteditable="true" data-placeholder="Вставьте пост из Telegram или начните писать…">{clean_rich_text(block["content"] or "")}</div><textarea class="course-editor-source" name="content" hidden></textarea><div class="editor-status"></div></div>'''
         elif block_type == "test":
@@ -424,7 +431,7 @@ class CourseAdmin:
         form_class = "course-block-form course-file-form" if block_type in {"video", "image", "file"} else "course-block-form"
         upload_name = {"video": "Видео урока", "image": "Изображение урока", "file": "Файл урока"}.get(block_type, "")
         upload_attrs = f''' data-media-upload data-upload-label="{esc(upload_name)}"''' if upload_name else ""
-        return f'''<article class="block-card"><span class="block-type">{esc(self.block_labels.get(block_type, block_type))}</span><form class="{form_class}"{upload_attrs} method="post" action="{self.action_url}" enctype="multipart/form-data"><input type="hidden" name="action" value="course_block_save"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><input type="hidden" name="block_id" value="{block["id"]}">{fields}<div class="block-actions"><button>Сохранить</button></div></form><form method="post" action="{self.action_url}" style="position:absolute;right:16px;top:16px" onsubmit="return confirm('Удалить блок?')"><input type="hidden" name="action" value="course_block_delete"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><input type="hidden" name="block_id" value="{block["id"]}"><button class="ghost" title="Удалить блок">×</button></form></article>'''
+        return f'''<article class="block-card"><span class="block-type">{esc(self.block_labels.get(block_type, block_type))}</span><form class="{form_class}"{upload_attrs} method="post" action="{self.action_url}" enctype="multipart/form-data"><input type="hidden" name="action" value="course_block_save"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><input type="hidden" name="block_id" value="{block["id"]}">{fields}<div class="block-actions"><button>Сохранить</button></div></form>{block_history}<form method="post" action="{self.action_url}" style="position:absolute;right:16px;top:16px" onsubmit="return confirm('Удалить блок?')"><input type="hidden" name="action" value="course_block_delete"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><input type="hidden" name="block_id" value="{block["id"]}"><button class="ghost" title="Удалить блок">×</button></form></article>'''
 
     def add_block_form(self, lesson_id: int, course_id: int) -> str:
         hidden = f'''<input type="hidden" name="action" value="course_block_add"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}">'''
@@ -548,7 +555,7 @@ class CourseAdmin:
                     "SELECT entity_type,entity_id,snapshot_json FROM mini_app_admin_revisions WHERE id=?",
                     (revision_id,),
                 )).fetchone()
-                if not revision or revision["entity_type"] not in {"course", "lesson"}:
+                if not revision or revision["entity_type"] not in {"course", "lesson", "block"}:
                     raise web.HTTPNotFound(text="Версия не найдена")
                 snapshot = json.loads(revision["snapshot_json"])
                 if revision["entity_type"] == "course":
@@ -580,7 +587,7 @@ class CourseAdmin:
                     restored = await self.course_snapshot(db, course_id)
                     if restored:
                         await self.owner.save_revision(db, "course", course_id, restored, "restore")
-                else:
+                elif revision["entity_type"] == "lesson":
                     if int(revision["entity_id"]) != lesson_id:
                         raise web.HTTPBadRequest(text="Версия относится к другому уроку")
                     current = await self.lesson_snapshot(db, lesson_id, course_id)
@@ -615,6 +622,24 @@ class CourseAdmin:
                     restored = await self.lesson_snapshot(db, lesson_id, course_id)
                     if restored:
                         await self.owner.save_revision(db, "lesson", lesson_id, restored, "restore")
+                else:
+                    block_id = int(revision["entity_id"])
+                    if int(snapshot.get("lesson_id") or 0) != lesson_id:
+                        raise web.HTTPBadRequest(text="Версия относится к другому уроку")
+                    current = await (await db.execute("SELECT * FROM mini_app_course_blocks WHERE id=? AND lesson_id=?", (block_id, lesson_id))).fetchone()
+                    if current:
+                        await self.owner.save_revision(db, "block", block_id, {key: current[key] for key in ("lesson_id","block_type","title","content","description","settings_json","stored_name","material_id","sort_order")}, "manual")
+                        await db.execute(
+                            """UPDATE mini_app_course_blocks SET block_type=?,title=?,content=?,description=?,settings_json=?,stored_name=?,material_id=?,sort_order=?,updated_at=? WHERE id=? AND lesson_id=?""",
+                            (snapshot.get("block_type") or current["block_type"], snapshot.get("title"), snapshot.get("content"), snapshot.get("description"), snapshot.get("settings_json"), snapshot.get("stored_name"), snapshot.get("material_id"), int(snapshot.get("sort_order") or 0), now, block_id, lesson_id),
+                        )
+                    else:
+                        await db.execute(
+                            """INSERT INTO mini_app_course_blocks(id,lesson_id,block_type,title,content,description,settings_json,stored_name,material_id,sort_order,created_at,updated_at)
+                               VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            (block_id, lesson_id, snapshot.get("block_type") or "longread", snapshot.get("title"), snapshot.get("content"), snapshot.get("description"), snapshot.get("settings_json"), snapshot.get("stored_name"), snapshot.get("material_id"), int(snapshot.get("sort_order") or 0), now, now),
+                        )
+                    await self.owner.save_revision(db, "block", block_id, snapshot, "restore")
             elif action == "course_review_moderate":
                 feedback_id = int(form.get("feedback_id") or 0)
                 status = str(form.get("review_status") or "")
@@ -811,9 +836,10 @@ class CourseAdmin:
                 block_id = int(form.get("block_id") or 0)
                 block_type = str(form.get("block_type") or "")
                 if action == "course_block_save":
-                    row = await (await db.execute("SELECT block_type,content,stored_name FROM mini_app_course_blocks WHERE id=? AND lesson_id=?", (block_id, lesson_id))).fetchone()
+                    row = await (await db.execute("SELECT * FROM mini_app_course_blocks WHERE id=? AND lesson_id=?", (block_id, lesson_id))).fetchone()
                     if not row:
                         raise web.HTTPNotFound(text="Блок не найден")
+                    await self.owner.save_revision(db, "block", block_id, {key: row[key] for key in ("lesson_id","block_type","title","content","description","settings_json","stored_name","material_id","sort_order")}, "manual")
                     block_type = row["block_type"]
                 if block_type not in self.block_labels:
                     raise web.HTTPBadRequest(text="Неизвестный тип блока")
@@ -873,7 +899,9 @@ class CourseAdmin:
                     await self.owner.activate_saved_videos(db, content)
             elif action == "course_block_delete":
                 block_id = int(form.get("block_id") or 0)
-                row = await (await db.execute("SELECT stored_name,material_id FROM mini_app_course_blocks WHERE id=? AND lesson_id=?", (block_id, lesson_id))).fetchone()
+                row = await (await db.execute("SELECT * FROM mini_app_course_blocks WHERE id=? AND lesson_id=?", (block_id, lesson_id))).fetchone()
+                if row:
+                    await self.owner.save_revision(db, "block", block_id, {key: row[key] for key in ("lesson_id","block_type","title","content","description","settings_json","stored_name","material_id","sort_order")}, "manual")
                 await db.execute("DELETE FROM mini_app_course_blocks WHERE id=? AND lesson_id=?", (block_id, lesson_id))
                 if row and row["material_id"]:
                     await db.execute("DELETE FROM mini_app_materials WHERE id=? AND library_visible=0", (row["material_id"],))
