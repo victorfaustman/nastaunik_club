@@ -11,7 +11,8 @@
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 Inter, system-ui, -apple-system, sans-serif; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
 button { font: inherit; }
-.shell { max-width: 720px; margin: auto; padding: 22px 18px 92px; }
+.shell { max-width: 720px; min-width: 0; margin: auto; padding: 22px 18px 92px; overflow-wrap: anywhere; }
+html, body { max-width: 100%; overflow-x: hidden; }
 .test-mode-entry { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin: -5px 0 9px; }
 .test-mode-entry > span { color: var(--muted); font-size: 10px; font-weight: 750; }
 .test-mode-entry button { padding: 7px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); color: var(--muted); font-size: 11px; font-weight: 800; cursor: pointer; }
@@ -161,6 +162,7 @@ button { font: inherit; }
 .lesson-content-block .rich-content > :first-child { margin-top: 0; }
 .lesson-content-block .rich-content > :last-child { margin-bottom: 0; }
 .lesson-media-block img, .lesson-media-block video { display: block; width: 100%; max-width: 100%; height: auto; max-height: 75vh; border-radius: 16px; background: #1d1714; object-fit: contain; }
+.lesson-media-block iframe, .rich-content iframe { display: block; width: 100%; max-width: 100%; aspect-ratio: 16/9; border: 0; border-radius: 16px; }
 .lesson-block-description { margin: 12px 1px 0; color: var(--muted); }
 .lesson-test-block { padding: 22px; }
 .lesson-test-block h2 { margin-top: 7px; }
@@ -230,6 +232,15 @@ button { font: inherit; }
   .lesson-content-block, .lesson-media-block, .lesson-test-block, .lesson-assignment-block { padding: 16px; }
   .course-feedback { grid-template-columns: 1fr auto; padding: 17px; }
   .lesson-navigation { grid-template-columns: minmax(0,.68fr) minmax(0,1.45fr); }
+}
+@media (max-width: 520px) {
+  .shell { padding-left: 12px; padding-right: 12px; }
+  .lesson-top, .course-summary, .lesson-navigation { gap: 8px; }
+  .lesson-navigation { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+  .lesson-navigation button, .course-primary { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .course-card { grid-template-columns: 112px minmax(0,1fr); gap: 10px; }
+  .course-card-main h3 { overflow-wrap: anywhere; }
+  .course-feedback { grid-template-columns: minmax(0,1fr) auto; }
 }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #261d19; --paper: #342824; --ink: #f8eee5; --muted: #c0a99c; --line: #5b4338; --shadow: none; }
