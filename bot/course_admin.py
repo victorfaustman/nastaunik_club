@@ -368,6 +368,7 @@ class CourseAdmin:
                    WHERE b.lesson_id=? ORDER BY b.sort_order,b.id""",
                 (lesson_id,),
             )
+            blocks = [dict(block) for block in blocks]
             for block in blocks:
                 block["block_history"] = await self.owner.revision_history_html(
                     db, "block", int(block["id"]),
