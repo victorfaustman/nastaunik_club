@@ -259,6 +259,14 @@ async def get_material(db: Database, material_id: int, telegram_id: int | None =
             if not item.get("cover_url"):
                 image, video = article_preview(item.get("full_description"))
                 item["cover_url"] = image or video
+                if video:
+                    video_name = Path(video.split("?", 1)[0]).name
+                    poster = await (await conn.execute(
+                        "SELECT poster_name FROM mini_app_video_jobs WHERE stored_name=? AND poster_name IS NOT NULL",
+                        (video_name,),
+                    )).fetchone()
+                    if poster:
+                        item["cover_url"] = f"/mini-app/media/{Path(poster['poster_name']).name}"
             item.pop("full_description", None)
             related.append(item)
         result["related_materials"] = related
