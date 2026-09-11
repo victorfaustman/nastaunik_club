@@ -64,6 +64,7 @@ class CourseAdmin:
         @media(max-width:1000px){.course-workspace{grid-template-columns:230px minmax(0,1fr)}.layout{grid-template-columns:1fr}.sticky{position:static}}
         .video-status{margin:0 0 8px;padding:8px 11px;border-radius:9px;background:var(--soft);color:var(--muted);font-size:12px;font-weight:750}.video-status-processing,.video-status-queued{color:#9a5d35}.video-status-ready{color:var(--success)}.video-status-failed{color:#a44439}.block-preview button{margin-top:8px}
         @media(max-width:760px){.course-workspace{grid-template-columns:1fr}.course-outline{position:static;max-height:none}.top,.course-card{align-items:stretch;grid-template-columns:1fr;flex-direction:column}.course-card{display:flex}.module-head form,.add-grid{grid-template-columns:1fr}.lesson-line{align-items:flex-start}.test-options{grid-template-columns:1fr}.analytics-cards{grid-template-columns:1fr 1fr}.top h1{font-size:32px}.admin-tabs{width:100%;overflow:auto}.admin-tabs a{flex:1;text-align:center;white-space:nowrap}.course-toolbar{overflow-x:auto;flex-wrap:nowrap}.course-toolbar button{white-space:nowrap}.block-preview video,.block-preview img{max-height:none;width:100%}}
+        .block-reorder{position:absolute;right:48px;top:14px;display:flex;gap:4px}.block-reorder button{width:28px;height:28px;padding:0;border-radius:8px;background:var(--soft);color:var(--accent);font-size:15px}.block-reorder button:hover{background:var(--accent);color:#fff}
         '''
 
     def course_outline(self, course, modules, lessons, active_lesson_id: int | None = None) -> str:
@@ -413,7 +414,7 @@ class CourseAdmin:
             material_title = block["material_title"] or "Лонгрид"
             material_description = block["material_description"] or "Откройте, чтобы добавить текст, обложку, теги и дополнительные файлы."
             fields = f'''<div style="padding:18px 0 8px"><h2>{esc(material_title)}</h2><p class="hint">{esc(material_description)}</p><a class="button" href="{self.course_material_url(block["material_id"], course_id, lesson_id, block["id"])}">Открыть редактор лонгрида</a></div>'''
-            return f'''<article class="block-card"><span class="block-type">Лонгрид</span>{fields}{block_history}<form method="post" action="{self.action_url}" style="position:absolute;right:16px;top:16px" onsubmit="return confirm('Удалить лонгрид?')"><input type="hidden" name="action" value="course_block_delete"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><input type="hidden" name="block_id" value="{block["id"]}"><button class="ghost" title="Удалить блок">×</button></form></article>'''
+            return f'''<article class="block-card" data-course-block-id="{block["id"]}" data-course-id="{course_id}" data-lesson-id="{lesson_id}"><span class="block-type">Лонгрид</span><div class="block-reorder"><button type="button" data-block-move="up" title="Переместить выше">↑</button><button type="button" data-block-move="down" title="Переместить ниже">↓</button></div>{fields}{block_history}<form method="post" action="{self.action_url}" style="position:absolute;right:16px;top:16px" onsubmit="return confirm('Удалить лонгрид?')"><input type="hidden" name="action" value="course_block_delete"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><input type="hidden" name="block_id" value="{block["id"]}"><button class="ghost" title="Удалить блок">×</button></form></article>'''
         if block_type == "longread":
             fields = f'''<div class="course-longread"><p class="hint">Можно вставить готовый пост — абзацы, списки, ссылки и форматирование сохранятся.</p><div class="course-toolbar"><button type="button" data-cmd="undo" title="Отменить">↶</button><button type="button" data-cmd="redo" title="Повторить">↷</button><button type="button" data-cmd="bold"><b>Ж</b></button><button type="button" data-cmd="italic"><i>К</i></button><button type="button" data-cmd="formatBlock" data-value="h2">Заголовок</button><button type="button" data-cmd="formatBlock" data-value="blockquote">Цитата</button><button type="button" data-cmd="insertUnorderedList">• Список</button><button type="button" data-cmd="insertOrderedList">1. Список</button><button type="button" data-divider>Разделитель</button><button type="button" data-link>Ссылка</button><button type="button" class="media-button" data-media>＋ Фото/видео</button><input class="inline-media-file" type="file" accept=".jpg,.jpeg,.png,.webp,.gif,.mp4" hidden><button type="button" data-cmd="removeFormat">Очистить</button></div><div class="course-editor" contenteditable="true" data-placeholder="Вставьте пост из Telegram или начните писать…">{clean_rich_text(block["content"] or "")}</div><textarea class="course-editor-source" name="content" hidden></textarea><div class="editor-status"></div></div>'''
         elif block_type == "test":
@@ -433,7 +434,7 @@ class CourseAdmin:
         form_class = "course-block-form course-file-form" if block_type in {"video", "image", "file"} else "course-block-form"
         upload_name = {"video": "Видео урока", "image": "Изображение урока", "file": "Файл урока"}.get(block_type, "")
         upload_attrs = f''' data-media-upload data-upload-label="{esc(upload_name)}"''' if upload_name else ""
-        return f'''<article class="block-card"><span class="block-type">{esc(self.block_labels.get(block_type, block_type))}</span><form class="{form_class}"{upload_attrs} method="post" action="{self.action_url}" enctype="multipart/form-data"><input type="hidden" name="action" value="course_block_save"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><input type="hidden" name="block_id" value="{block["id"]}">{fields}<div class="block-actions"><button>Сохранить</button></div></form>{block_history}<form method="post" action="{self.action_url}" style="position:absolute;right:16px;top:16px" onsubmit="return confirm('Удалить блок?')"><input type="hidden" name="action" value="course_block_delete"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><input type="hidden" name="block_id" value="{block["id"]}"><button class="ghost" title="Удалить блок">×</button></form></article>'''
+        return f'''<article class="block-card" data-course-block-id="{block["id"]}" data-course-id="{course_id}" data-lesson-id="{lesson_id}"><span class="block-type">{esc(self.block_labels.get(block_type, block_type))}</span><div class="block-reorder"><button type="button" data-block-move="up" title="Переместить выше">↑</button><button type="button" data-block-move="down" title="Переместить ниже">↓</button></div><form class="{form_class}"{upload_attrs} method="post" action="{self.action_url}" enctype="multipart/form-data"><input type="hidden" name="action" value="course_block_save"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><input type="hidden" name="block_id" value="{block["id"]}">{fields}<div class="block-actions"><button>Сохранить</button></div></form>{block_history}<form method="post" action="{self.action_url}" style="position:absolute;right:16px;top:16px" onsubmit="return confirm('Удалить блок?')"><input type="hidden" name="action" value="course_block_delete"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}"><input type="hidden" name="block_id" value="{block["id"]}"><button class="ghost" title="Удалить блок">×</button></form></article>'''
 
     def add_block_form(self, lesson_id: int, course_id: int) -> str:
         hidden = f'''<input type="hidden" name="action" value="course_block_add"><input type="hidden" name="course_id" value="{course_id}"><input type="hidden" name="lesson_id" value="{lesson_id}">'''
@@ -850,6 +851,26 @@ class CourseAdmin:
                     "error": row["error"],
                     "poster_url": f"/mini-app/media/{Path(row['poster_name']).name}" if row["poster_name"] else None,
                 }
+            elif action == "course_block_move":
+                block_id = int(form.get("block_id") or 0)
+                direction = -1 if form.get("direction") == "up" else 1
+                rows = await self.owner.rows(
+                    db,
+                    "SELECT id FROM mini_app_course_blocks WHERE lesson_id=? ORDER BY sort_order,id",
+                    (lesson_id,),
+                )
+                ids = [int(row["id"]) for row in rows]
+                if block_id not in ids:
+                    raise web.HTTPNotFound(text="Блок не найден")
+                index = ids.index(block_id)
+                target = index + direction
+                if 0 <= target < len(ids):
+                    ids[index], ids[target] = ids[target], ids[index]
+                    for order, current_id in enumerate(ids):
+                        await db.execute(
+                            "UPDATE mini_app_course_blocks SET sort_order=?,updated_at=? WHERE id=? AND lesson_id=?",
+                            (order, now, current_id, lesson_id),
+                        )
             elif action in {"course_block_add", "course_block_save"}:
                 block_id = int(form.get("block_id") or 0)
                 block_type = str(form.get("block_type") or "")
@@ -940,6 +961,8 @@ class CourseAdmin:
         if action == "course_video_status":
             return web.json_response(status_result)
         if action == "course_tree_move" and form.get("ajax") == "1":
+            return web.json_response({"ok": True})
+        if action == "course_block_move" and form.get("ajax") == "1":
             return web.json_response({"ok": True})
         if action in {"course_save", "course_lesson_save"} and form.get("ajax") == "1":
             return web.json_response({"ok": True, "saved_at": now})

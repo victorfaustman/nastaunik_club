@@ -532,6 +532,19 @@ class Database:
                     FOREIGN KEY (material_id) REFERENCES mini_app_materials(id) ON DELETE CASCADE
                 );
 
+                CREATE TABLE IF NOT EXISTS mini_app_material_relations (
+                    material_id INTEGER NOT NULL,
+                    related_material_id INTEGER NOT NULL,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (material_id, related_material_id),
+                    FOREIGN KEY (material_id) REFERENCES mini_app_materials(id) ON DELETE CASCADE,
+                    FOREIGN KEY (related_material_id) REFERENCES mini_app_materials(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_mini_app_material_relations_material
+                    ON mini_app_material_relations(material_id, sort_order, related_material_id);
+
                 CREATE TABLE IF NOT EXISTS mini_app_video_jobs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     stored_name TEXT NOT NULL UNIQUE,

@@ -245,6 +245,23 @@ async def get_material(db: Database, material_id: int, telegram_id: int | None =
             (material_id,),
         )
         result["tags"] = [dict(tag) for tag in await cur.fetchall()]
+        cur = await conn.execute(
+            """SELECT r.related_material_id AS id,m.title,m.short_description,m.cover_url,m.full_description
+               FROM mini_app_material_relations r
+               JOIN mini_app_materials m ON m.id=r.related_material_id
+               WHERE r.material_id=? AND m.status='published' AND m.library_visible=1
+               ORDER BY r.sort_order,r.related_material_id""",
+            (material_id,),
+        )
+        related = []
+        for related_row in await cur.fetchall():
+            item = dict(related_row)
+            if not item.get("cover_url"):
+                image, video = article_preview(item.get("full_description"))
+                item["cover_url"] = image or video
+            item.pop("full_description", None)
+            related.append(item)
+        result["related_materials"] = related
         return result
 
 

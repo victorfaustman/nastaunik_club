@@ -1,4 +1,27 @@
 document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('[data-block-move]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const card = button.closest('[data-course-block-id]');
+      if (!card || button.disabled) return;
+      button.disabled = true;
+      const data = new FormData();
+      data.set('action', 'course_block_move');
+      data.set('course_id', card.dataset.courseId);
+      data.set('lesson_id', card.dataset.lessonId);
+      data.set('block_id', card.dataset.courseBlockId);
+      data.set('direction', button.dataset.blockMove);
+      data.set('ajax', '1');
+      try {
+        const response = await fetch(card.querySelector('form')?.action || window.location.href, { method: 'POST', body: data });
+        if (!response.ok) throw new Error('move failed');
+        window.location.reload();
+      } catch (_) {
+        button.disabled = false;
+        alert('Не удалось изменить порядок блока');
+      }
+    });
+  });
+
   document.querySelectorAll('[data-add-kind]').forEach((button) => {
     button.addEventListener('click', () => {
       const container = button.closest('.add-block');
