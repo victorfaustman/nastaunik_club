@@ -104,7 +104,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .like-button:hover, .like-button:focus-visible, .like-button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .like-button:disabled { opacity: .55; cursor: wait; }
 .bottom-nav { position: fixed; z-index: 3; bottom: 0; left: 0; right: 0; padding: 9px 10px calc(9px + env(safe-area-inset-bottom)); background: #fffaf3ed; border-top: 1px solid var(--line); backdrop-filter: blur(12px); display: flex; justify-content: center; gap: 3px; }
-.bottom-nav button { border: 0; background: none; color: var(--muted); font-size: 11px; display: grid; gap: 3px; justify-items: center; padding: 7px 10px; border-radius: 12px; min-width: 62px; }
+.bottom-nav button { flex: 1 1 0; min-width: 0; border: 0; background: none; color: var(--muted); font-size: 11px; display: grid; gap: 3px; justify-items: center; padding: 7px 3px; border-radius: 12px; white-space: nowrap; }
 .bottom-nav button.active { background: #f1dfd0; color: var(--accent-dark); font-weight: 800; }
 .empty { text-align: center; padding: 32px 18px; color: var(--muted); }
 .status { padding: 26px 6px 12px; text-align: center; }
@@ -247,6 +247,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
 }
 @media (max-width: 520px) {
   .shell { padding-left: 12px; padding-right: 12px; }
+  .bottom-nav { gap: 1px; padding-left: 5px; padding-right: 5px; }
+  .bottom-nav button { font-size: 10px; padding-left: 1px; padding-right: 1px; }
   .lesson-top, .course-summary, .lesson-navigation { gap: 8px; }
   .lesson-navigation { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
   .lesson-navigation button, .course-primary { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
