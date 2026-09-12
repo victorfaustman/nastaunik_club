@@ -7,6 +7,7 @@ import asyncio
 import tempfile
 from datetime import datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 from urllib.parse import quote
 
 from bot.mini_app import MiniApp, validate_init_data
@@ -62,6 +63,25 @@ class MiniAppSchemaTests(unittest.TestCase):
 class PilotAccessTests(unittest.TestCase):
     def test_access_state_still_uses_existing_membership_rules(self):
         self.assertEqual(access_state(None), "new")
+
+
+class RelatedMaterialAccessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_related_cards_follow_effective_membership(self):
+        for state, test_mode in (("new", None), ("expired", None), ("active", None),
+                                 ("new", "unpaid"), ("active", "paid")):
+            with self.subTest(state=state, test_mode=test_mode):
+                app = MiniApp(None, "test")
+                app.authorised = AsyncMock(return_value=(None, None, {
+                    "state": state, "test_mode": test_mode, "telegram_id": 42,
+                }))
+                detail = {"is_free": 1, "related_materials": [
+                    {"id": 2, "is_free": 0}, {"id": 3, "is_free": 1},
+                ]}
+                with patch("bot.mini_app.get_material", new=AsyncMock(return_value=detail)):
+                    response = await app.material(SimpleNamespace(match_info={"material_id": "1"}))
+                cards = json.loads(response.text)["related_materials"]
+                self.assertEqual(cards[0]["locked"], state != "active")
+                self.assertFalse(cards[1]["locked"])
 
 
 class OwnerTestModeTests(unittest.TestCase):

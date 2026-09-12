@@ -246,7 +246,7 @@ async def get_material(db: Database, material_id: int, telegram_id: int | None =
         )
         result["tags"] = [dict(tag) for tag in await cur.fetchall()]
         cur = await conn.execute(
-            """SELECT r.related_material_id AS id,m.title,m.short_description,m.cover_url,m.full_description
+            """SELECT r.related_material_id AS id,m.title,m.short_description,m.cover_url,m.full_description,m.is_free
                FROM mini_app_material_relations r
                JOIN mini_app_materials m ON m.id=r.related_material_id
                WHERE r.material_id=? AND m.status='published' AND m.library_visible=1

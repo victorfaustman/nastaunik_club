@@ -266,7 +266,10 @@ class MiniApp:
         if user["state"] != "active" and not item.get("is_free"):
             raise web.HTTPForbidden(text="Этот материал доступен участникам клуба")
         tracking_id = None if user.get("test_mode") else user["telegram_id"]
-        return web.json_response(await get_material(self.db, material_id, tracking_id))
+        detail = await get_material(self.db, material_id, tracking_id)
+        for related in detail.get("related_materials", []):
+            related["locked"] = user["state"] != "active" and not bool(related.get("is_free"))
+        return web.json_response(detail)
 
     async def material_complete(self, request: web.Request) -> web.Response:
         _, _, user = await self.authorised(request)
