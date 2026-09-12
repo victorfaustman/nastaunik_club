@@ -545,6 +545,38 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_mini_app_material_relations_material
                     ON mini_app_material_relations(material_id, sort_order, related_material_id);
 
+                CREATE TRIGGER IF NOT EXISTS mini_app_material_relations_mirror_insert
+                AFTER INSERT ON mini_app_material_relations
+                WHEN NEW.material_id <> NEW.related_material_id
+                  AND NOT EXISTS (
+                    SELECT 1 FROM mini_app_material_relations
+                    WHERE material_id=NEW.related_material_id AND related_material_id=NEW.material_id
+                  )
+                BEGIN
+                    INSERT INTO mini_app_material_relations(material_id,related_material_id,sort_order,created_at)
+                    SELECT NEW.related_material_id,NEW.material_id,COALESCE(MAX(sort_order),-1)+1,NEW.created_at
+                    FROM mini_app_material_relations WHERE material_id=NEW.related_material_id;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS mini_app_material_relations_mirror_delete
+                AFTER DELETE ON mini_app_material_relations
+                BEGIN
+                    DELETE FROM mini_app_material_relations
+                    WHERE material_id=OLD.related_material_id AND related_material_id=OLD.material_id;
+                END;
+
+                INSERT OR IGNORE INTO mini_app_material_relations(material_id,related_material_id,sort_order,created_at)
+                SELECT r.related_material_id,r.material_id,
+                       COALESCE((SELECT MAX(existing.sort_order) FROM mini_app_material_relations existing
+                                 WHERE existing.material_id=r.related_material_id),-1)
+                       + ROW_NUMBER() OVER (PARTITION BY r.related_material_id ORDER BY r.sort_order,r.material_id),
+                       r.created_at
+                FROM mini_app_material_relations r
+                WHERE r.material_id<>r.related_material_id AND NOT EXISTS (
+                    SELECT 1 FROM mini_app_material_relations reverse
+                    WHERE reverse.material_id=r.related_material_id AND reverse.related_material_id=r.material_id
+                );
+
                 CREATE TABLE IF NOT EXISTS mini_app_video_jobs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     stored_name TEXT NOT NULL UNIQUE,
