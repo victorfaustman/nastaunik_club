@@ -13,7 +13,7 @@ def main_menu_keyboard(*, show_renew_button: bool = False, hide_entry_actions: b
         primary_entry_text = "Продлить участие в клубе" if show_renew_button else "Вступить в клуб"
         rows.append([_join_button(primary_entry_text)])
     if mini_app_url:
-        rows.append([InlineKeyboardButton(text="Открыть Mini App (тест)", url=mini_app_url)])
+        rows.append([InlineKeyboardButton(text="Открыть Mini App", url=mini_app_url)])
     rows.extend(
         [
             [InlineKeyboardButton(text="Мой статус", callback_data="menu:status")],

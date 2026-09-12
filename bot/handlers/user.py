@@ -165,11 +165,9 @@ def create_user_router(db: Database, settings: Settings) -> Router:
         if isinstance(target, Message) and target.from_user:
             actor_id = target.from_user.id
 
-        pilot_mini_app_url = (
-            settings.mini_app_url
-            if actor_id is not None and actor_id in settings.mini_app_allowed_ids
-            else None
-        )
+        # Mini App is the public entry point. Access to paid content is checked
+        # inside the Mini App by the user's actual club status.
+        pilot_mini_app_url = settings.mini_app_url
 
         if screen in {"payment", "join"}:
             text, reply_markup = await get_payment_screen(actor_id)
