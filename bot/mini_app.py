@@ -85,6 +85,12 @@ class MiniApp:
         self.test_mode_ids = test_mode_ids or set()
 
     def register(self, app: web.Application) -> None:
+        from bot.consultations import Consultations
+        self.consultations = Consultations(self.db, self)
+        app.cleanup_ctx.append(self.consultations.context)
+        app.router.add_get('/mini-app/api/consultations', self.consultations.schedule)
+        app.router.add_post('/mini-app/api/consultations', self.consultations.book)
+        app.router.add_post('/mini-app/api/consultations/{booking_id}/cancel', self.consultations.cancel)
         from bot.mini_app_payments import MiniAppPayments
         self.payments = MiniAppPayments(self)
         app.router.add_get('/mini-app/api/payment', self.payments.status)

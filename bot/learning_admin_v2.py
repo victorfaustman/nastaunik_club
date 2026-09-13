@@ -112,6 +112,8 @@ class LearningAdmin:
         self.schema = Database(database_path)
         self.media_dir = Path(__file__).resolve().parent.parent / "media" / "mini_app"
         self.course_admin = CourseAdmin(self)
+        from bot.consultations import Consultations
+        self.consultations = Consultations(self.schema)
 
     async def connect(self):
         db = await aiosqlite.connect(self.database_path, timeout=8)
@@ -220,6 +222,8 @@ class LearningAdmin:
 
     async def page(self, request: web.Request) -> web.Response:
         await self.schema.init()
+        if request.query.get('section') == 'consultations':
+            return await self.consultations.admin_page(self, request)
         if request.query.get("section") == "courses" or request.query.get("course") is not None or request.query.get("lesson") is not None:
             return await self.course_admin.page(request)
         if request.query.get("analytics") == "1":
@@ -974,6 +978,8 @@ class LearningAdmin:
         await self.schema.init()
         form = await request.post()
         action = str(form.get("action") or "")
+        if action == 'consultation_cancel':
+            return await self.consultations.admin_cancel(self, form)
         if action.startswith("course_"):
             return await self.course_admin.action(request, form)
         now = datetime.utcnow().isoformat(timespec="seconds")
