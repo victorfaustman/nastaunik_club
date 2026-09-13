@@ -1,0 +1,25 @@
+.membership-card h2 { margin-top:0; }
+.free-access-banner { display:flex; align-items:center; gap:16px; width:100%; margin:0 0 22px; padding:16px; border:1px solid var(--line); border-radius:16px; background:var(--paper); color:var(--ink); text-align:left; cursor:pointer; font:inherit; }
+.free-access-banner > span { display:grid; gap:5px; min-width:0; flex:1; }
+.free-access-banner span span { color:var(--muted); font-size:13px; line-height:1.45; }
+.free-access-banner:hover, .free-access-banner:focus-visible { border-color:var(--accent); }
+.membership-price { margin-top:16px; font-size:22px; font-weight:700; }
+.payment-notice { margin:16px 0; padding:18px; border:1px solid var(--line); border-radius:18px; background:var(--paper); }
+.payment-notice p { margin-bottom:0; }
+.payment-error { border-color:var(--accent); }
+.payment-details > summary { list-style:none; cursor:pointer; text-align:center; }
+.payment-details > summary::-webkit-details-marker { display:none; }
+.payment-body { padding-top:20px; }
+.payment-body h2 { font-size:24px; }
+.payment-requisite { display:grid; gap:10px; padding:16px; margin:14px 0; border:1px solid var(--line); border-radius:14px; }
+.payment-requisite span, .payment-body small, .profile-refresh-note { color:var(--muted); font-size:13px; }
+.payment-requisite strong { font-size:21px; letter-spacing:.025em; }
+.payment-requisite button { width:100%; white-space:normal; }
+.receipt-picker { display:grid; gap:10px; padding:18px; border:1px dashed var(--accent); border-radius:14px; margin:12px 0; cursor:pointer; }
+.receipt-picker input { max-width:100%; min-width:0; color:var(--ink); }
+#receipt-preview img { display:block; max-width:100%; max-height:260px; object-fit:contain; margin:12px auto; border-radius:12px; }
+#receipt-progress progress { width:100%; margin-top:15px; accent-color:var(--accent); }
+#receipt-status { font-size:14px; }
+#receipt-form > button { width:100%; }
+.payment-body button:disabled { opacity:.5; cursor:default; }
+.profile-help { margin-top:22px; }

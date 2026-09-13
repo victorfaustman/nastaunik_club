@@ -330,7 +330,7 @@ def create_user_router(db: Database, settings: Settings) -> Router:
                 logger.exception("Failed to sync club callback user into core registry")
             user = await db.get_user(callback.from_user.id)
             latest_payment = await db.get_latest_payment_for_user(callback.from_user.id)
-            if user and user.current_status == "waiting_confirmation" and latest_payment and latest_payment.status == "pending":
+            if latest_payment and latest_payment.status == "pending":
                 await callback.answer("Ваш чек уже отправлен на проверку.", show_alert=True)
                 return
             await db.set_waiting_payment(callback.from_user.id)

@@ -185,6 +185,10 @@ def trial_ended_user(amount_label: str = "10 BYN в месяц") -> str:
     )
 
 
+PAYMENT_CARD = "5208130008671731"
+PAYMENT_PHONE = "+375 25 91 29 014"
+
+
 def payment_info(amount_label: str = "10 BYN в месяц", *, is_renewal: bool = False) -> str:
     opening = (
         "Продлите участие в закрытом клубе Nastaŭnik."
@@ -199,8 +203,8 @@ def payment_info(amount_label: str = "10 BYN в месяц", *, is_renewal: bool
     return (
         f"{opening}\n\n"
         "Чтобы оплатить участие, можно выбрать удобный вариант:\n\n"
-        "▫️ перевод с карты на карту — 5208130008671731\n"
-        "▫️ если вы пользуетесь Альфа-Банком Беларусь, перевод по номеру телефона +375 25 91 29 014\n"
+        f"▫️ перевод с карты на карту — {PAYMENT_CARD}\n"
+        f"▫️ если вы пользуетесь Альфа-Банком Беларусь, перевод по номеру телефона {PAYMENT_PHONE}\n"
         f"▫️ стоимость участия — {amount_label}\n\n"
         f"{closing}"
     )

@@ -85,6 +85,11 @@ class MiniApp:
         self.test_mode_ids = test_mode_ids or set()
 
     def register(self, app: web.Application) -> None:
+        from bot.mini_app_payments import MiniAppPayments
+        self.payments = MiniAppPayments(self)
+        app.router.add_get('/mini-app/api/payment', self.payments.status)
+        app.router.add_post('/mini-app/api/payment/receipt', self.payments.submit)
+        app.cleanup_ctx.append(self.payments.context)
         app.router.add_get("/mini-app/", self.index)
         app.router.add_get("/mini-app/preview", self.preview)
         app.router.add_get("/mini-app/media/{filename}", self.media)

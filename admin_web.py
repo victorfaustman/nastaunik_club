@@ -278,6 +278,7 @@ class ClubAdminWebApp:
         app.router.add_post("/user/{telegram_id}/restore-access", self.restore_access)
         app.router.add_post("/payment/{payment_id}/approve", self.approve_payment)
         app.router.add_post("/payment/{payment_id}/reject", self.reject_payment)
+        app.router.add_get("/payment/{payment_id}/receipt", self.payment_receipt)
         app.router.add_get("/health", self.health)
         app.router.add_get("/learning", self.learning_admin.page)
         app.router.add_post("/learning/action", self.learning_admin.action)
@@ -1006,6 +1007,17 @@ class ClubAdminWebApp:
             details=f"{amount_label}; дата оплаты {paid_iso}; доступ до {access_end_iso}",
         )
         raise web.HTTPSeeOther(location=self.url(f"/user/{telegram_id}", saved=1))
+
+    async def payment_receipt(self, request: web.Request) -> web.StreamResponse:
+        payment_id = int(request.match_info['payment_id'])
+        async with self.connect() as db:
+            row = await (await db.execute('SELECT stored_name FROM mini_app_payment_uploads WHERE payment_id=?', (payment_id,))).fetchone()
+        if not row:
+            raise web.HTTPNotFound(text='Чек не найден')
+        target = self.mini_app.payments.directory / Path(row['stored_name']).name
+        if not target.is_file():
+            raise web.HTTPNotFound(text='Чек не найден')
+        return web.FileResponse(target, headers={'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})
 
     async def approve_payment(self, request: web.Request) -> web.Response:
         payment_id = int(request.match_info["payment_id"])
@@ -2453,6 +2465,11 @@ class ClubAdminWebApp:
             active="broadcasts",
         )
 
+    def mini_app_receipt_link(self, payment) -> str:
+        if payment['receipt_text'] != 'Чек из Mini App':
+            return ''
+        return f'<a class="button secondary mini-button" target="_blank" href="{esc(self.url("/payment/" + str(payment["id"]) + "/receipt"))}">Открыть чек</a>'
+
     def render_pending_payments(self, payments: list[sqlite3.Row], *, compact: bool = False) -> str:
         rows: list[str] = []
         for payment in payments:
@@ -2465,7 +2482,7 @@ class ClubAdminWebApp:
                   <button type="submit">Подтвердить</button>
                 </form>
                 <form method="post" action="{esc(reject_url)}">
-                  <input type="hidden" name="comment" value="Отклонено через CRM">
+                  <input name="comment" placeholder="Причина отклонения для участника" required maxlength="500">
                   <button class="danger" type="submit">Отклонить</button>
                 </form>
             """
@@ -2475,7 +2492,7 @@ class ClubAdminWebApp:
                   <td>{esc(format_dt(payment['created_at']))}</td>
                   <td><a class="name" href="{esc(user_url)}">{esc(payment['full_name'])}</a><span class="sub">{esc('@' + payment['username'] if payment['username'] else 'без username')}</span></td>
                   <td><strong>{esc(payment['amount_label'])}</strong><span class="sub">{esc(payment['receipt_text'] or payment['receipt_type'] or 'чек без текста')}</span></td>
-                  <td><div class="payment-actions">{actions}<a class="button secondary mini-button" href="{esc(user_url)}">Карточка</a></div></td>
+                  <td><div class="payment-actions">{actions}{self.mini_app_receipt_link(payment)}<a class="button secondary mini-button" href="{esc(user_url)}">Карточка</a></div></td>
                 </tr>
                 """
             )
@@ -2962,7 +2979,7 @@ class ClubAdminWebApp:
               <td>{esc(payment["amount_label"])}</td>
               <td>{esc(format_dt(payment["created_at"]))}</td>
               <td>{esc(format_dt(payment["confirmed_at"]))}</td>
-              <td>{esc(payment["receipt_text"] or "")}</td>
+              <td>{esc(payment["receipt_text"] or "")}{self.mini_app_receipt_link(payment)}</td>
             </tr>
             """
             for payment in payments

@@ -1260,10 +1260,18 @@ class Database:
     ) -> int:
         now = self._now_iso()
         async with self.connect() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            pending = await (await db.execute(
+                "SELECT id FROM payments WHERE telegram_id=? AND status='pending' ORDER BY id DESC LIMIT 1",
+                (telegram_id,),
+            )).fetchone()
+            if pending:
+                return int(pending['id'])
             await db.execute(
                 """
                 UPDATE users
-                SET current_status = 'waiting_confirmation',
+                SET current_status = CASE WHEN current_status IN ('active','grace_period','trial_active') OR is_lifetime_free=1
+                                         THEN current_status ELSE 'waiting_confirmation' END,
                     last_receipt_file_id = ?,
                     updated_at = ?
                 WHERE telegram_id = ?
@@ -1395,7 +1403,7 @@ class Database:
                 (now, admin_comment, payment_id),
             )
             await db.execute(
-                "UPDATE users SET current_status = 'rejected', admin_comment = ?, updated_at = ? WHERE telegram_id = ?",
+                "UPDATE users SET current_status = CASE WHEN current_status IN ('active','grace_period','trial_active') OR is_lifetime_free=1 THEN current_status ELSE 'rejected' END, admin_comment = ?, updated_at = ? WHERE telegram_id = ?",
                 (admin_comment, now, telegram_id),
             )
             await db.commit()
@@ -1404,7 +1412,7 @@ class Database:
     async def set_waiting_payment(self, telegram_id: int) -> None:
         async with self.connect() as db:
             await db.execute(
-                "UPDATE users SET current_status = 'waiting_payment', updated_at = ? WHERE telegram_id = ?",
+                "UPDATE users SET current_status = CASE WHEN current_status IN ('active','grace_period','trial_active') OR is_lifetime_free=1 THEN current_status ELSE 'waiting_payment' END, updated_at = ? WHERE telegram_id = ?",
                 (self._now_iso(), telegram_id),
             )
             await db.commit()
