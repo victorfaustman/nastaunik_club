@@ -436,6 +436,24 @@ async def get_course(db: Database, course_id: int, telegram_id: int) -> dict[str
             (course_id,),
         )
         result["reviews"] = [dict(row) for row in await cur.fetchall()]
+        rows = await (await conn.execute(
+            """SELECT m.id,m.title,m.short_description,m.cover_url,m.full_description,m.is_free
+               FROM mini_app_material_course_relations r JOIN mini_app_materials m ON m.id=r.material_id
+               WHERE r.course_id=? AND m.status='published' AND m.library_visible=1 ORDER BY m.sort_order,m.id""",
+            (course_id,),
+        )).fetchall()
+        result['related_materials'] = []
+        for row in rows:
+            item = dict(row)
+            if not item['cover_url']:
+                image, video = article_preview(item['full_description'])
+                item['cover_url'] = image
+                if not image and video:
+                    poster = await (await conn.execute('SELECT poster_name FROM mini_app_video_jobs WHERE stored_name=? AND poster_name IS NOT NULL', (Path(video.split('?',1)[0]).name,))).fetchone()
+                    if poster:
+                        item['cover_url'] = f"/mini-app/media/{Path(poster['poster_name']).name}"
+            item.pop('full_description', None)
+            result['related_materials'].append(item)
         return result
 
 
