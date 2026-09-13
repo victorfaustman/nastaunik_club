@@ -1,0 +1,21 @@
+const {chromium}=require(process.env.PLAYWRIGHT_PATH||'playwright');
+const fs=require('fs'),assert=require('assert');
+(async()=>{const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});try{
+ const context=await browser.newContext({viewport:{width:320,height:812},permissions:['clipboard-read','clipboard-write']});const page=await context.newPage();
+ await page.route('https://club.test/**',route=>route.fulfill({body:'<div class="toolbar"></div><div id="content-editor" class="editor" contenteditable="true"><p>Начало</p></div>',contentType:'text/html'}));
+ await page.goto('https://club.test/');await page.addScriptTag({path:'mini_app/static/copy-blocks.js'});
+ await page.getByRole('button',{name:'＋ Текст для копирования',exact:true}).click();
+ const text='Напиши план урока:\n  1. Пример <div> & "текст"\n\n  2. '+ 'ОченьДлиннаяСтрока'.repeat(25);
+ await page.getByLabel('Текст для копирования',{exact:true}).fill(text);
+ await page.getByRole('button',{name:'Добавить в статью'}).click();
+ assert.equal(await page.locator('#content-editor pre').textContent(),text);
+ const saved=await page.locator('#content-editor').innerHTML();
+ const source=fs.readFileSync('mini_app/static/app.js','utf8');
+ const start=source.indexOf('function richHtml('),end=source.indexOf('let stopReadingProgress');
+ await page.addScriptTag({content:source.slice(start,end)});
+ await page.evaluate(html=>{document.body.innerHTML='<div class="rich-content">'+richHtml(html)+'</div>';},saved);
+ await page.getByRole('button',{name:'Скопировать',exact:true}).click();
+ assert.equal((await page.evaluate(()=>navigator.clipboard.readText())).replace(/\r\n/g,'\n'),text);
+ assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ console.log('PASS: insertion, exact text/indentation, one-click clipboard, 320px width');
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1});

@@ -28,6 +28,7 @@ function richHtml(value){
   t.content.querySelectorAll('*').forEach(x=>[...x.attributes].forEach(a=>{if(a.name.toLowerCase().startsWith('on')||['src','href'].includes(a.name.toLowerCase())&&!/^(https?:|\/|#)/i.test(a.value))x.removeAttribute(a.name)}));
   t.content.querySelectorAll('figcaption').forEach(c=>{if(c.textContent.trim().toLocaleLowerCase('ru')==='добавьте подпись')c.remove()});
   t.content.querySelectorAll('video').forEach(v=>{v.setAttribute('preload','metadata');v.setAttribute('playsinline','')});
+  t.content.querySelectorAll('pre').forEach(pre=>{const wrapper=document.createElement('section');wrapper.className='copy-text-block';const bar=document.createElement('div');bar.className='copy-text-bar';bar.innerHTML='<span>Текст для копирования</span><button type="button" data-copy-text>Скопировать</button>';pre.replaceWith(wrapper);wrapper.append(bar,pre)});
   return t.innerHTML
 }
 let stopReadingProgress=()=>{};
