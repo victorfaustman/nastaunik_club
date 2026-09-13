@@ -280,6 +280,8 @@ class MiniApp:
         detail = await get_material(self.db, material_id, tracking_id)
         for related in detail.get("related_materials", []):
             related["locked"] = user["state"] != "active" and not bool(related.get("is_free"))
+        for related in detail.get('related_courses', []):
+            related['locked'] = user['state'] != 'active'
         return web.json_response(detail)
 
     async def material_complete(self, request: web.Request) -> web.Response:

@@ -362,6 +362,9 @@ class LearningAdmin:
                 (material["id"],),
             ) if material else []
             related_ids = {int(row["id"]) for row in related_rows}
+            related_courses = await self.rows(db, 'SELECT c.id,c.title FROM mini_app_material_course_relations r JOIN mini_app_courses c ON c.id=r.course_id WHERE r.material_id=? ORDER BY c.sort_order,c.id', (material['id'],)) if material else []
+            related_course_ids = {row['id'] for row in related_courses}
+            available_courses = await self.rows(db, "SELECT id,title FROM mini_app_courses WHERE status='published' ORDER BY sort_order,id")
             available_related = await self.rows(
                 db,
                 """SELECT id,title,short_description FROM mini_app_materials
@@ -447,6 +450,9 @@ class LearningAdmin:
         article_heading = "Содержание лонгрида" if is_course_material else "Статья"
         tags_section = "" if is_course_material else f'''<section class="card"><div class="section-head"><div><h2>Теги</h2><p class="hint">Нажмите на тег, чтобы выбрать. Карандаш появляется при наведении.</p></div><button type="button" class="add-tag" onclick="document.getElementById('new-tag').showModal()">＋ Новый тег</button></div><div class="tag-list">{tag_chips or '<span class="empty-note">Тегов пока нет.</span>'}</div></section>'''
         cover_section = "" if is_course_material else f'''<section class="card"><h2>Обложка</h2><p class="hint">Необязательно. Если её нет, карточка возьмёт первое изображение статьи, превью YouTube или видео.</p><input id="remove-cover" type="hidden" name="remove_cover" value="0"><div class="cover">{cover_preview}<label class="drop"><b id="cover-label">＋ Загрузить обложку</b><br><span class="hint">JPG, PNG или WEBP · 16:9</span><input id="cover-input" type="file" name="cover_file" accept=".jpg,.jpeg,.png,.webp"></label></div></section>'''
+        course_cards = ''.join(f'''<div class="related-admin-card"><b>Курс · {esc(row['title'])}</b><form method="post" action="{self.url('/learning/material/action')}" onsubmit="return confirm('Убрать связанный курс?')"><input type="hidden" name="action" value="related_course_delete"><input type="hidden" name="material_id" value="{m['id']}"><input type="hidden" name="course_id" value="{row['id']}"><button class="danger" title="Убрать курс">×</button></form></div>''' for row in related_courses)
+        course_options = ''.join(f'<option value="{row["id"]}">{esc(row["title"])}</option>' for row in available_courses if row['id'] not in related_course_ids)
+        course_form = f'''<form class="related-add" method="post" action="{self.url('/learning/material/action')}"><input type="hidden" name="action" value="related_course_add"><input type="hidden" name="material_id" value="{m['id']}"><select name="course_id" required><option value="">Выберите курс…</option>{course_options}</select><button>＋ Добавить курс</button></form>''' if m['id'] and course_options else '<p class="hint">Сначала сохраните материал. Для добавления доступны опубликованные курсы, которые ещё не выбраны.</p>'
         related_cards = "".join(
             f'''<div class="related-admin-card"><div><b>{esc(row["title"])}</b><small>{esc(row["short_description"] or "Без описания")}</small></div><form method="post" action="{self.url("/learning/material/action")}" onsubmit="return confirm('Убрать связанный материал?')"><input type="hidden" name="action" value="related_material_delete"><input type="hidden" name="material_id" value="{m["id"]}"><input type="hidden" name="related_id" value="{row["id"]}"><button class="danger" title="Убрать">×</button></form></div>'''
             for row in related_rows
@@ -459,7 +465,7 @@ class LearningAdmin:
             f'''<form class="related-add" method="post" action="{self.url("/learning/material/action")}"><input type="hidden" name="action" value="related_material_add"><input type="hidden" name="material_id" value="{m["id"]}"><select name="related_id" required><option value="">Выберите материал…</option>{related_options}</select><button>＋ Добавить</button></form>'''
             if m["id"] and related_options else '<p class="hint">Сначала сохраните материал или опубликуйте другие материалы.</p>'
         )
-        related_section = "" if is_course_material else f'''<section class="card related-admin"><div class="section-head"><div><h2>Связанные материалы</h2><p class="hint">Добавьте уже опубликованные материалы, которые стоит открыть после этой статьи. Пустой блок в Mini App не показывается.</p></div></div><div class="related-admin-list">{related_cards}</div>{related_add_form}</section>'''
+        related_section = "" if is_course_material else f'''<section class="card related-admin"><div class="section-head"><div><h2>Связанные материалы и курсы</h2><p class="hint">Добавьте уже опубликованные материалы, которые стоит открыть после этой статьи. Пустой блок в Mini App не показывается.</p></div></div><div class="related-admin-list">{related_cards}</div>{related_add_form}<h3>Связанные курсы</h3>{course_cards}{course_form}</section>'''
         files_section = "" if is_course_material else f'''<section class="card"><div class="section-head"><div><h2>Дополнительные материалы</h2><p class="hint">PDF, документ, презентация, таблица, изображение или видео.</p></div></div>{file_cards}<form class="new-asset upload-form" data-media-upload data-upload-label="Дополнительный материал" method="post" action="{self.url('/learning/material/action')}" enctype="multipart/form-data">{return_fields}<input type="hidden" name="action" value="file_add"><input type="hidden" name="material_id" value="{m["id"]}"><input name="file_title" placeholder="Заголовок материала"><textarea name="file_description" placeholder="Кратко опишите, что внутри"></textarea><label class="drop"><b id="attachment-label">＋ Выбрать файл</b><input id="attachment-input" type="file" name="material_file" required></label><button {"" if material else "disabled"}>Добавить материал</button>{'' if material else '<span class="hint"> Сначала сохраните основной материал.</span>'}</form></section>'''
         dialogs = "" if is_course_material else f'''{tag_dialogs}<dialog id="new-tag"><form class="tag-modal-form" method="post" action="{self.url('/learning/material/action')}"><input type="hidden" name="action" value="tag_create"><input type="hidden" name="ajax" value="1"><input type="hidden" name="return_material" value="{m["id"]}"><h2>Новый тег</h2><label class="field">Название<input name="tag_name" placeholder="Например: Методика" required></label><label class="field">Цвет<input type="color" name="tag_color" value="#D97757"></label><div class="actions"><button>Добавить</button><button type="button" class="secondary" onclick="this.closest('dialog').close()">Отмена</button></div></form></dialog>'''
         compatibility_inputs = '''<span hidden id="cover-label"></span><img hidden id="cover-preview" alt=""><input hidden id="cover-input" type="file"><span hidden id="attachment-label"></span><input hidden id="attachment-input" type="file">''' if is_course_material else ""
@@ -1117,6 +1123,19 @@ class LearningAdmin:
             elif action == "file_update":
                 editor_id = int(form.get("material_id") or 0)
                 await db.execute("UPDATE mini_app_material_files SET title=?,description=? WHERE id=? AND material_id=?", (str(form.get("file_title") or "").strip() or None, str(form.get("file_description") or "").strip() or None, int(form.get("id") or 0), editor_id))
+            elif action in {'related_course_add', 'related_course_delete'}:
+                editor_id = int(form.get('material_id') or 0)
+                course_id = int(form.get('course_id') or 0)
+                source = await (await db.execute('SELECT id FROM mini_app_materials WHERE id=?', (editor_id,))).fetchone()
+                if not source:
+                    raise web.HTTPBadRequest(text='Сначала сохраните материал')
+                if action == 'related_course_add':
+                    target = await (await db.execute("SELECT id FROM mini_app_courses WHERE id=? AND status='published'", (course_id,))).fetchone()
+                    if not target:
+                        raise web.HTTPBadRequest(text='Выберите опубликованный курс')
+                    await db.execute('INSERT OR IGNORE INTO mini_app_material_course_relations(material_id,course_id) VALUES(?,?)', (editor_id,course_id))
+                else:
+                    await db.execute('DELETE FROM mini_app_material_course_relations WHERE material_id=? AND course_id=?', (editor_id,course_id))
             elif action in {"related_material_add", "related_material_delete"}:
                 editor_id = int(form.get("material_id") or 0)
                 related_id = int(form.get("related_id") or 0)

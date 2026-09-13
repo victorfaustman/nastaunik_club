@@ -270,6 +270,13 @@ async def get_material(db: Database, material_id: int, telegram_id: int | None =
             item.pop("full_description", None)
             related.append(item)
         result["related_materials"] = related
+        cur = await conn.execute(
+            """SELECT c.id,c.title,c.description AS short_description,c.cover_url
+               FROM mini_app_material_course_relations r JOIN mini_app_courses c ON c.id=r.course_id
+               WHERE r.material_id=? AND c.status='published' ORDER BY c.sort_order,c.id""",
+            (material_id,),
+        )
+        result['related_courses'] = [dict(row) for row in await cur.fetchall()]
         return result
 
 

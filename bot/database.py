@@ -285,6 +285,12 @@ class Database:
                     FOREIGN KEY (next_course_id) REFERENCES mini_app_courses(id) ON DELETE SET NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS mini_app_material_course_relations (
+                    material_id INTEGER NOT NULL REFERENCES mini_app_materials(id) ON DELETE CASCADE,
+                    course_id INTEGER NOT NULL REFERENCES mini_app_courses(id) ON DELETE CASCADE,
+                    PRIMARY KEY(material_id, course_id)
+                );
+
                 CREATE TABLE IF NOT EXISTS mini_app_course_lessons (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     course_id INTEGER NOT NULL,

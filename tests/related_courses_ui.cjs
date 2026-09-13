@@ -1,0 +1,10 @@
+const fs=require('fs'),assert=require('assert');
+const source=fs.readFileSync('mini_app/static/app.js','utf8').split(/\r?\n/).filter(l=>l.includes('const related=')||l.includes('const relatedSection=')).join('\n');
+const render=new Function('m','state','esc',source+'\nreturn relatedSection');
+const m={related_materials:[],related_courses:[{id:7,title:'Курс',short_description:'Описание',cover_url:'/mini-app/media/cover.jpg'}]};
+const free=render(m,{data:{user:{state:'new'}}},String);
+assert(free.includes('disabled'));assert(!free.includes('onclick='));assert(free.includes('<img'));
+const paid=render(m,{data:{user:{state:'active'}}},String);
+assert(paid.includes('openCourse(7)'));assert(!paid.includes('disabled'));
+assert.equal(render({related_materials:[],related_courses:[]},{data:{user:{state:'active'}}},String),'');
+console.log('PASS: course cover, paid navigation, free locked card, empty section hidden');
