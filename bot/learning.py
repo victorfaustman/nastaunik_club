@@ -170,7 +170,7 @@ async def get_bootstrap(db: Database, user: dict[str, Any]) -> dict[str, Any]:
         cur = await conn.execute(
             """SELECT c.*, cat.name AS category_name FROM mini_app_courses c
                LEFT JOIN mini_app_categories cat ON cat.id=c.category_id
-               WHERE c.status='published' ORDER BY c.sort_order, c.created_at DESC"""
+               WHERE c.status='published' ORDER BY c.sort_order, c.created_at DESC,c.id DESC"""
         )
         courses = [dict(row) for row in await cur.fetchall()]
         cur = await conn.execute(
@@ -189,7 +189,6 @@ async def get_bootstrap(db: Database, user: dict[str, Any]) -> dict[str, Any]:
             detail.pop("lessons", None)
             detail['locked'] = not has_full_access and not bool(detail.get('is_free'))
             course_summaries.append(detail)
-    course_summaries.sort(key=lambda course: bool(course['locked']))
     return {"user": user, "settings": settings, "home": home, "materials": catalog["materials"],
             "categories": catalog["categories"], "tags": catalog["tags"], "courses": course_summaries,
             "consultation": consultation}

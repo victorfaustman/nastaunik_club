@@ -16,7 +16,7 @@ class FreeCourseTests(unittest.IsolatedAsyncioTestCase):
             await db.upsert_user(43,'member','Member')
             async with db.connect() as conn:
                 for cid,free in [(1,0),(2,1)]:
-                    await conn.execute("INSERT INTO mini_app_courses(id,title,status,is_free,created_at,updated_at) VALUES(?,?,'published',?,'now','now')",(cid,f'Course {cid}',free))
+                    await conn.execute("INSERT INTO mini_app_courses(id,title,status,is_free,sort_order,created_at,updated_at) VALUES(?,?,'published',?,?,'now','now')",(cid,f'Course {cid}',free,cid))
                     await conn.execute("INSERT INTO mini_app_course_units(id,course_id,title,created_at,updated_at) VALUES(?,?,'Lesson','now','now')",(cid,cid))
                 await conn.commit()
             mini=MiniApp(db,'123:TEST',set(),{42})
@@ -29,8 +29,8 @@ class FreeCourseTests(unittest.IsolatedAsyncioTestCase):
             headers={'X-Telegram-Init-Data':InitDataValidationTests().make_init_data(user_id=43)}
             async with TestClient(TestServer(app)) as client:
                 data=await (await client.get('/bootstrap',headers=headers)).json()
-                self.assertEqual([c['id'] for c in data['courses']],[2,1])
-                self.assertFalse(data['courses'][0]['locked']);self.assertTrue(data['courses'][1]['locked'])
+                self.assertEqual([c['id'] for c in data['courses']],[1,2])
+                self.assertTrue(data['courses'][0]['locked']);self.assertFalse(data['courses'][1]['locked'])
                 for path,_,method in routes:
                     url=path.format(course_id=1,lesson_id=1,block_id=1)
                     self.assertEqual((await client.request(method,url,headers=headers)).status,403,url)

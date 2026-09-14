@@ -266,6 +266,9 @@ class CourseAdmin:
             return await self.course_editor(request)
         return await self.index(request)
 
+    def course_move_buttons(self, course_id, index, count):
+        return f'''<form method="post" action="{self.action_url}" style="display:flex;gap:5px"><input type="hidden" name="action" value="course_move"><input type="hidden" name="course_id" value="{course_id}"><button class="secondary" name="direction" value="up" title="Выше" aria-label="Переместить курс выше" {'disabled' if index==0 else ''}>↑</button><button class="secondary" name="direction" value="down" title="Ниже" aria-label="Переместить курс ниже" {'disabled' if index==count-1 else ''}>↓</button></form>'''
+
     async def index(self, request: web.Request) -> web.Response:
         db = await self.owner.connect()
         try:
@@ -274,16 +277,16 @@ class CourseAdmin:
                 """SELECT c.*,
                           (SELECT COUNT(*) FROM mini_app_course_modules m WHERE m.course_id=c.id) module_count,
                           (SELECT COUNT(*) FROM mini_app_course_units l WHERE l.course_id=c.id) lesson_count
-                   FROM mini_app_courses c ORDER BY c.updated_at DESC,c.id DESC""",
+                   FROM mini_app_courses c ORDER BY c.sort_order,c.created_at DESC,c.id DESC""",
             )
         finally:
             await db.close()
         cards = "".join(
-            f'''<article class="course-card"><div><div class="meta">{row["module_count"]} модулей · {row["lesson_count"]} уроков</div><h2>{esc(row["title"])}</h2><p>{esc(row["description"] or "Описание ещё не добавлено")}</p></div><div class="actions"><a class="button" href="{self.course_url(row["id"])}">Открыть</a><form method="post" action="{self.action_url}" onsubmit="return confirm('Удалить курс со всеми уроками?')"><input type="hidden" name="action" value="course_delete"><input type="hidden" name="course_id" value="{row["id"]}"><button class="danger">Удалить</button></form></div></article>'''
-            for row in courses
+            f'''<article class="course-card" data-course-id="{row["id"]}"><div><div class="meta"><span draggable="true" data-course-drag style="cursor:grab;padding:8px" title="Перетащить курс">⠿</span> №{index + 1} · {'Опубликован' if row['status']=='published' else 'Не опубликован'} · {row["module_count"]} модулей · {row["lesson_count"]} уроков</div><h2>{esc(row["title"])}</h2><p>{esc(row["description"] or "Описание ещё не добавлено")}</p></div><div class="actions">{self.course_move_buttons(row["id"], index, len(courses))}<a class="button" href="{self.course_url(row["id"])}">Открыть</a><form method="post" action="{self.action_url}" onsubmit="return confirm('Удалить курс со всеми уроками?')"><input type="hidden" name="action" value="course_delete"><input type="hidden" name="course_id" value="{row["id"]}"><button class="danger">Удалить</button></form></div></article>'''
+            for index, row in enumerate(courses)
         ) or '<div class="empty">Курсов пока нет. Создайте первый курс.</div>'
         return web.Response(
-            text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Курсы — Nastaunik</title><style>{self.styles()}</style></head><body><main>{self.tabs("courses")}<div class="top"><div><h1>Курсы</h1><p>Собирайте программу из уроков — с модулями или без них.</p></div><a class="button" href="{self.course_url()}">＋ Создать курс</a></div>{cards}</main></body></html>''',
+            text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Курсы — Nastaunik</title><script src="/mini-app/static/course-order.js?v=1" defer></script><style>{self.styles()}</style></head><body><main>{self.tabs("courses")}<div class="top"><div><h1>Курсы</h1><p>Расставьте курсы в рекомендуемом порядке: перетащите за ⠿ или нажмите ↑ / ↓. Порядок одинаков для всех пользователей.</p></div><a class="button" href="{self.course_url()}">＋ Создать курс</a></div><p id="course-order-status" role="status">Порядок сохраняется сразу. Новые курсы добавляются в конец.</p><div id="course-order-list" data-action="{self.action_url}">{cards}</div></main></body></html>''',
             content_type="text/html",
         )
 
@@ -497,7 +500,28 @@ class CourseAdmin:
         inline_result = None
         db = await self.owner.connect()
         try:
-            if action in {'course_related_material_add', 'course_related_material_delete'}:
+            if action in {'course_move', 'course_reorder'}:
+                await db.execute('BEGIN IMMEDIATE')
+                rows = await self.owner.rows(db, 'SELECT id FROM mini_app_courses ORDER BY sort_order,created_at DESC,id DESC')
+                ordered = [row['id'] for row in rows]
+                if action == 'course_move':
+                    if course_id not in ordered or form.get('direction') not in {'up','down'}:
+                        raise web.HTTPBadRequest(text='Некорректное перемещение курса')
+                    current = ordered.index(course_id)
+                    target = current + (-1 if form['direction']=='up' else 1)
+                    if 0 <= target < len(ordered):
+                        ordered[current],ordered[target] = ordered[target],ordered[current]
+                else:
+                    try:
+                        requested = [int(value) for value in json.loads(str(form.get('order') or '[]'))]
+                        original = [int(value) for value in json.loads(str(form.get('original_order') or '[]'))]
+                    except (ValueError, TypeError):
+                        raise web.HTTPBadRequest(text='Некорректный порядок курсов')
+                    if original != ordered or len(requested)!=len(ordered) or set(requested)!=set(ordered):
+                        raise web.HTTPConflict(text='Список курсов изменился. Обновите страницу и повторите.')
+                    ordered = requested
+                await db.executemany('UPDATE mini_app_courses SET sort_order=? WHERE id=?', [(index,cid) for index,cid in enumerate(ordered)])
+            elif action in {'course_related_material_add', 'course_related_material_delete'}:
                 related_id = int(form.get('material_id') or 0)
                 course = await (await db.execute('SELECT id FROM mini_app_courses WHERE id=?', (course_id,))).fetchone()
                 if not course:
@@ -567,6 +591,7 @@ class CourseAdmin:
                         (*values[:-1], now, now),
                     )
                     course_id = int(cur.lastrowid)
+                    await db.execute('UPDATE mini_app_courses SET sort_order=(SELECT COALESCE(MAX(sort_order),-1)+1 FROM mini_app_courses WHERE id<>?) WHERE id=?', (course_id,course_id))
                 if not autosave:
                     await self.save_course_cover(db, course_id, form.get("cover_file"))
                 await db.execute('UPDATE mini_app_courses SET is_free=? WHERE id=?', (1 if form.get('is_free') else 0, course_id))
@@ -980,6 +1005,10 @@ class CourseAdmin:
             await db.close()
         if action == "course_delete":
             raise web.HTTPSeeOther(location=self.courses_url())
+        if action == 'course_move':
+            raise web.HTTPSeeOther(location=self.courses_url(saved=1))
+        if action == 'course_reorder':
+            return web.json_response({'ok': True})
         if action == "course_inline_upload":
             return web.json_response(inline_result or {"ok": False}, status=200 if inline_result else 400)
         if action == "course_video_status":
