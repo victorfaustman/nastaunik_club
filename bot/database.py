@@ -658,6 +658,7 @@ class Database:
             await self._ensure_column(db, "mini_app_courses", "outcome", "TEXT")
             await self._ensure_column(db, "mini_app_courses", "duration_label", "TEXT")
             await self._ensure_column(db, "mini_app_courses", "is_visible", "INTEGER NOT NULL DEFAULT 0")
+            await self._ensure_column(db, "mini_app_courses", "is_free", "INTEGER NOT NULL DEFAULT 0")
             await self._ensure_column(db, "mini_app_courses", "sequential_access", "INTEGER NOT NULL DEFAULT 0")
             await self._ensure_column(db, "mini_app_courses", "completion_title", "TEXT")
             await self._ensure_column(db, "mini_app_courses", "completion_text", "TEXT")

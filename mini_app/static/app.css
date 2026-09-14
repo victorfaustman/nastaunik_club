@@ -143,6 +143,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .course-lesson-row:hover, .course-lesson-row:focus-visible { border-color: color-mix(in srgb,var(--accent) 62%,var(--line)); background: color-mix(in srgb,var(--accent) 4%,var(--paper)); outline: 0; transform: translateY(-1px); }
 .course-lesson-row:active { transform: scale(.99); }
 .course-lesson-row.locked { border-color: #ddd4ce; background: color-mix(in srgb,var(--paper) 72%,#c7c1bd); color: var(--muted); box-shadow: none; cursor: not-allowed; opacity: .72; }
+.course-card.locked { filter:grayscale(1); opacity:.6; }
+.course-card.locked button { cursor:default; }
 .course-lesson-row.locked:hover { transform: none; }
 .lesson-number { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: #f1dfd0; color: var(--accent-dark); font-size: 12px; font-weight: 900; }
 .course-lesson-row.completed .lesson-number { background: #68826e; color: #fff; }

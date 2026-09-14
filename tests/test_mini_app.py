@@ -132,7 +132,8 @@ class OwnerTestModeTests(unittest.TestCase):
                 self.assertEqual(user["test_mode"], "unpaid")
                 self.assertIsNone(user["access_end_at"])
                 unpaid_payload = json.loads((await mini_app.bootstrap(request)).text)
-                self.assertEqual(unpaid_payload["courses"], [])
+                self.assertEqual(len(unpaid_payload['courses']), 1)
+                self.assertTrue(unpaid_payload['courses'][0]['locked'])
 
                 material = json.loads((await mini_app.material(request)).text)
                 self.assertFalse(material["viewed"])

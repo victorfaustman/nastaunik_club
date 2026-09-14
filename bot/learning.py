@@ -187,7 +187,9 @@ async def get_bootstrap(db: Database, user: dict[str, Any]) -> dict[str, Any]:
         detail = await get_course(db, int(course["id"]), course_telegram_id)
         if detail:
             detail.pop("lessons", None)
+            detail['locked'] = not has_full_access and not bool(detail.get('is_free'))
             course_summaries.append(detail)
+    course_summaries.sort(key=lambda course: bool(course['locked']))
     return {"user": user, "settings": settings, "home": home, "materials": catalog["materials"],
             "categories": catalog["categories"], "tags": catalog["tags"], "courses": course_summaries,
             "consultation": consultation}
@@ -271,7 +273,7 @@ async def get_material(db: Database, material_id: int, telegram_id: int | None =
             related.append(item)
         result["related_materials"] = related
         cur = await conn.execute(
-            """SELECT c.id,c.title,c.description AS short_description,c.cover_url
+            """SELECT c.id,c.title,c.description AS short_description,c.cover_url,c.is_free
                FROM mini_app_material_course_relations r JOIN mini_app_courses c ON c.id=r.course_id
                WHERE r.material_id=? AND c.status='published' ORDER BY c.sort_order,c.id""",
             (material_id,),

@@ -142,14 +142,14 @@ class MiniApp:
         preview_courses: dict[str, dict] = {}
         preview_lessons: dict[str, dict] = {}
         preview_test_answers: dict[str, dict] = {}
-        if course_id and (mode == "paid" or lesson_id):
+        if course_id:
             preview_ids = [course_id]
             course = await get_course(self.db, course_id, 0)
             if course and course.get("next_course_id"):
                 preview_ids.append(int(course["next_course_id"]))
             for preview_course_id in dict.fromkeys(preview_ids):
                 preview_course = await get_course(self.db, preview_course_id, 0)
-                if not preview_course:
+                if not preview_course or (mode == 'unpaid' and not preview_course.get('is_free')):
                     continue
                 preview_courses[str(preview_course_id)] = preview_course
                 for lesson in preview_course["lessons"]:
@@ -181,7 +181,6 @@ class MiniApp:
                         "explanation": str(settings.get("explanation") or ""),
                     }
         if mode == "unpaid":
-            payload["courses"] = []
             payload["consultation"] = {}
         values = {
             "data": payload,
@@ -261,7 +260,6 @@ class MiniApp:
         _, _, user = await self.authorised(request)
         payload = await get_bootstrap(self.db, user)
         if user["state"] != "active":
-            payload["courses"] = []
             payload["consultation"] = {}
         return web.json_response(payload)
 
@@ -281,7 +279,7 @@ class MiniApp:
         for related in detail.get("related_materials", []):
             related["locked"] = user["state"] != "active" and not bool(related.get("is_free"))
         for related in detail.get('related_courses', []):
-            related['locked'] = user['state'] != 'active'
+            related['locked'] = user['state'] != 'active' and not bool(related.get('is_free'))
         return web.json_response(detail)
 
     async def material_complete(self, request: web.Request) -> web.Response:
@@ -314,10 +312,21 @@ class MiniApp:
             return web.json_response({"ok": True, "liked": True, "like_count": item.get("like_count", 0), "test_mode": True})
         return web.json_response(await toggle_material_like(self.db, material_id, user["telegram_id"]))
 
+    async def require_course_access(self, request, user):
+        try:
+            course_id = int(request.match_info['course_id'])
+        except (KeyError, ValueError):
+            raise web.HTTPNotFound()
+        async with self.db.connect() as conn:
+            course = await (await conn.execute("SELECT is_free FROM mini_app_courses WHERE id=? AND status='published'", (course_id,))).fetchone()
+        if not course:
+            raise web.HTTPNotFound()
+        if user['state'] != 'active' and not course['is_free']:
+            raise web.HTTPForbidden(text='Этот курс доступен участникам клуба')
+
     async def course(self, request: web.Request) -> web.Response:
         _, _, user = await self.authorised(request)
-        if user["state"] != "active":
-            raise web.HTTPForbidden(text="Active membership is required")
+        await self.require_course_access(request, user)
         try:
             course_id = int(request.match_info["course_id"])
         except ValueError:
@@ -330,8 +339,7 @@ class MiniApp:
 
     async def course_lesson(self, request: web.Request) -> web.Response:
         _, _, user = await self.authorised(request)
-        if user["state"] != "active":
-            raise web.HTTPForbidden(text="Active membership is required")
+        await self.require_course_access(request, user)
         try:
             course_id = int(request.match_info["course_id"])
             lesson_id = int(request.match_info["lesson_id"])
@@ -352,8 +360,7 @@ class MiniApp:
 
     async def course_lesson_complete(self, request: web.Request) -> web.Response:
         _, _, user = await self.authorised(request)
-        if user["state"] != "active":
-            raise web.HTTPForbidden(text="Active membership is required")
+        await self.require_course_access(request, user)
         try:
             course_id = int(request.match_info["course_id"])
             lesson_id = int(request.match_info["lesson_id"])
@@ -383,8 +390,7 @@ class MiniApp:
 
     async def course_video_event(self, request: web.Request) -> web.Response:
         _, _, user = await self.authorised(request)
-        if user["state"] != "active":
-            raise web.HTTPForbidden(text="Active membership is required")
+        await self.require_course_access(request, user)
         try:
             payload = await request.json()
             course_id = int(request.match_info["course_id"])
@@ -402,8 +408,7 @@ class MiniApp:
 
     async def course_test_answer(self, request: web.Request) -> web.Response:
         _, _, user = await self.authorised(request)
-        if user["state"] != "active":
-            raise web.HTTPForbidden(text="Active membership is required")
+        await self.require_course_access(request, user)
         try:
             course_id = int(request.match_info["course_id"])
             lesson_id = int(request.match_info["lesson_id"])
@@ -430,8 +435,7 @@ class MiniApp:
 
     async def course_like(self, request: web.Request) -> web.Response:
         _, _, user = await self.authorised(request)
-        if user["state"] != "active":
-            raise web.HTTPForbidden(text="Active membership is required")
+        await self.require_course_access(request, user)
         try:
             course_id = int(request.match_info["course_id"])
         except ValueError:
@@ -448,8 +452,7 @@ class MiniApp:
 
     async def course_review(self, request: web.Request) -> web.Response:
         _, _, user = await self.authorised(request)
-        if user["state"] != "active":
-            raise web.HTTPForbidden(text="Active membership is required")
+        await self.require_course_access(request, user)
         try:
             course_id = int(request.match_info["course_id"])
             review_text = str((await request.json()).get("review_text") or "")
@@ -464,8 +467,7 @@ class MiniApp:
 
     async def course_assignment_submit(self, request: web.Request) -> web.Response:
         _, _, user = await self.authorised(request)
-        if user["state"] != "active":
-            raise web.HTTPForbidden(text="Active membership is required")
+        await self.require_course_access(request, user)
         try:
             course_id = int(request.match_info["course_id"])
             lesson_id = int(request.match_info["lesson_id"])
