@@ -13,6 +13,7 @@ from aiogram.types import FSInputFile
 from bot import keyboards, texts
 from bot.database import DEFAULT_AMOUNT_LABEL
 from bot.core_sync import sync_club_payment
+from bot.mini_app_foreign import MiniAppForeign
 
 logger = logging.getLogger(__name__)
 MAX_RECEIPT_BYTES = 10 * 1024 * 1024
@@ -24,8 +25,10 @@ class MiniAppPayments:
         self.db = mini_app.db
         self.directory = Path(self.db.path).resolve().parent / 'private_receipts'
         self.admin_ids = sorted(mini_app.test_mode_ids)
+        self.foreign = MiniAppForeign(mini_app)
 
     async def initialize(self):
+        await self.foreign.initialize()
         async with self.db.connect() as conn:
             await conn.executescript('''
                 CREATE TABLE IF NOT EXISTS mini_app_payment_uploads (
@@ -69,6 +72,7 @@ class MiniAppPayments:
                 'reason': (latest.admin_comment or 'Не удалось подтвердить оплату. Проверьте перевод и прикрепите новый чек.') if latest.status == 'rejected' else None,
             },
             'test_mode': bool(user.get('test_mode')),
+            'foreign_request': await self.foreign.status(user),
         }, headers={'Cache-Control': 'no-store'})
 
     @staticmethod
@@ -89,6 +93,9 @@ class MiniAppPayments:
             raise web.HTTPForbidden(text='В тестовом режиме отправка настоящих чеков отключена.')
         if user.get('is_lifetime_free'):
             raise web.HTTPBadRequest(text='У вас бессрочный доступ — оплата не требуется.')
+        foreign = await self.foreign.status(user)
+        if foreign and foreign['access_granted']:
+            raise web.HTTPBadRequest(text='Вам предоставлен доступ до подключения международной оплаты. Оплата пока не требуется.')
         if not self.admin_ids:
             raise web.HTTPServiceUnavailable(text='Приём чеков временно недоступен. Попробуйте позже.')
         request_id = request.headers.get('X-Payment-Request', '')
@@ -180,6 +187,10 @@ class MiniAppPayments:
     async def worker(self):
         async with Bot(self.app.bot_token) as bot:
             while True:
+                try:
+                    await self.foreign.deliver_pending(bot)
+                except Exception:
+                    logger.warning('Foreign request notification queue temporarily unavailable')
                 try:
                     async with self.db.connect() as conn:
                         rows = await (await conn.execute('''SELECT n.*,u.stored_name FROM mini_app_payment_notifications n
