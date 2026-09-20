@@ -53,7 +53,7 @@ class CourseAdmin:
         )
 
     def tabs(self, active: str) -> str:
-        return f'''<nav class="admin-tabs" style="max-width:100%;flex-wrap:wrap"><a class="{"active" if active == "materials" else ""}" href="{self.owner.url('/learning')}">Материалы</a><a class="{"active" if active == "courses" else ""}" href="{self.courses_url()}">Курсы</a><a class="{"active" if active == "consultations" else ""}" href="{self.owner.url('/learning', section='consultations')}">Консультации</a></nav>'''
+        return f'''<nav class="admin-tabs" style="max-width:100%;flex-wrap:wrap"><a class="{"active" if active == "materials" else ""}" href="{self.owner.url('/learning')}">Материалы</a><a class="{"active" if active == "courses" else ""}" href="{self.courses_url()}">Курсы</a><a class="{"active" if active == "tracks" else ""}" href="{self.owner.url('/learning', section='tracks')}">Треки</a><a class="{"active" if active == "consultations" else ""}" href="{self.owner.url('/learning', section='consultations')}">Консультации</a></nav>'''
 
     @staticmethod
     def styles() -> str:

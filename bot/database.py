@@ -131,6 +131,7 @@ class Database:
             await connection.close()
 
     async def init(self) -> None:
+        from bot.tracks import SCHEMA as TRACK_SCHEMA
         async with self.connect() as db:
             await db.executescript(
                 f"""
@@ -692,6 +693,10 @@ class Database:
                     "UPDATE mini_app_course_blocks SET material_id=? WHERE id=?",
                     (cursor.lastrowid, longread["id"]),
                 )
+            await db.commit()
+
+        async with self.connect() as db:
+            await db.executescript(TRACK_SCHEMA)
             await db.commit()
 
     async def _ensure_column(self, db: aiosqlite.Connection, table_name: str, column_name: str, column_definition: str) -> None:

@@ -112,6 +112,8 @@ class LearningAdmin:
         self.schema = Database(database_path)
         self.media_dir = Path(__file__).resolve().parent.parent / "media" / "mini_app"
         self.course_admin = CourseAdmin(self)
+        from bot.track_admin import TrackAdmin
+        self.track_admin = TrackAdmin(self)
         from bot.consultations import Consultations
         self.consultations = Consultations(self.schema)
 
@@ -222,6 +224,8 @@ class LearningAdmin:
 
     async def page(self, request: web.Request) -> web.Response:
         await self.schema.init()
+        if request.query.get('section') == 'tracks':
+            return await self.track_admin.page(request)
         if request.query.get('section') == 'consultations':
             return await self.consultations.admin_page(self, request)
         if request.query.get("section") == "courses" or request.query.get("course") is not None or request.query.get("lesson") is not None:
@@ -782,6 +786,7 @@ class LearningAdmin:
             referenced: set[str] = set()
             for sql in (
                 "SELECT cover_url AS value FROM mini_app_materials WHERE cover_url IS NOT NULL",
+                "SELECT cover_url AS value FROM mini_app_tracks WHERE cover_url IS NOT NULL",
                 "SELECT full_description AS value FROM mini_app_materials WHERE full_description IS NOT NULL",
                 "SELECT content AS value FROM mini_app_material_blocks WHERE content IS NOT NULL",
             ):
@@ -984,6 +989,8 @@ class LearningAdmin:
         await self.schema.init()
         form = await request.post()
         action = str(form.get("action") or "")
+        if action.startswith('track_'):
+            return await self.track_admin.action(request, form)
         if action == 'consultation_cancel':
             return await self.consultations.admin_cancel(self, form)
         if action.startswith("course_"):

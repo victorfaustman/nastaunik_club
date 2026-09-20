@@ -85,6 +85,9 @@ class MiniApp:
         self.test_mode_ids = test_mode_ids or set()
 
     def register(self, app: web.Application) -> None:
+        from bot.tracks import Tracks
+        self.tracks = Tracks(self)
+        self.tracks.register(app)
         from bot.consultations import Consultations
         self.consultations = Consultations(self.db, self)
         app.cleanup_ctx.append(self.consultations.context)
@@ -140,11 +143,32 @@ class MiniApp:
             "test_mode": mode,
         }
         payload = await get_bootstrap(self.db, user)
+        if request.query.get('track'):
+            from bot.tracks import catalog as track_catalog
+            try:
+                track_id = int(request.query['track'])
+            except ValueError:
+                raise web.HTTPNotFound()
+            payload.update(await track_catalog(self.db, user, include_draft=track_id))
         preview_courses: dict[str, dict] = {}
         preview_lessons: dict[str, dict] = {}
         preview_test_answers: dict[str, dict] = {}
-        if course_id:
-            preview_ids = [course_id]
+        preview_materials: dict[str, dict] = {}
+        if course_id or request.query.get('track'):
+            preview_ids = [course_id] if course_id else []
+            if request.query.get('track'):
+                current_track = next((t for t in payload['tracks'] if t['id'] == track_id), None)
+                if not current_track:
+                    raise web.HTTPNotFound()
+                for step in current_track['steps']:
+                    if step['locked']:
+                        continue
+                    if step['kind'] == 'course':
+                        preview_ids.append(step['item_id'])
+                    else:
+                        item = await get_material(self.db, step['item_id'])
+                        if item:
+                            preview_materials[str(step['item_id'])] = item
             course = await get_course(self.db, course_id, 0)
             if course and course.get("next_course_id"):
                 preview_ids.append(int(course["next_course_id"]))
@@ -186,6 +210,7 @@ class MiniApp:
         values = {
             "data": payload,
             "courses": preview_courses,
+            "materials": preview_materials,
             "lessons": preview_lessons,
             "testAnswers": preview_test_answers,
             "courseId": course_id,
@@ -255,6 +280,11 @@ class MiniApp:
                 "amount_label": None,
                 "is_lifetime_free": True,
             })
+        if not test_mode and (request.path.endswith('/bootstrap') or '/api/material/' in request.path or '/api/course/' in request.path):
+            from bot.tracks import stamp
+            async with self.db.connect() as conn:
+                await conn.execute('UPDATE mini_app_track_preferences SET last_activity=? WHERE telegram_id=?', (stamp(), user['telegram_id']))
+                await conn.commit()
         return tg_user, record, user
 
     async def bootstrap(self, request: web.Request) -> web.Response:

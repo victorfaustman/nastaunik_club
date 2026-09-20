@@ -189,7 +189,9 @@ async def get_bootstrap(db: Database, user: dict[str, Any]) -> dict[str, Any]:
             detail.pop("lessons", None)
             detail['locked'] = not has_full_access and not bool(detail.get('is_free'))
             course_summaries.append(detail)
-    return {"user": user, "settings": settings, "home": home, "materials": catalog["materials"],
+    from bot.tracks import catalog as track_catalog
+    track_data = await track_catalog(db, user)
+    return {**track_data, "user": user, "settings": settings, "home": home, "materials": catalog["materials"],
             "categories": catalog["categories"], "tags": catalog["tags"], "courses": course_summaries,
             "consultation": consultation}
 
