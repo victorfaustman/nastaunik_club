@@ -3,7 +3,10 @@ const assert=require('assert'),fs=require('fs');
 (async()=>{const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});try{
  const page=await browser.newPage({viewport:{width:1440,height:950},colorScheme:'light'}),errors=[];page.on('pageerror',e=>errors.push(e.message));
  const base=process.env.WEBSITE_TEST_URL;fs.mkdirSync('artifacts/website',{recursive:true});
- await page.goto(base);await page.locator('.site-welcome').waitFor();assert.equal(await page.locator('.site-sidebar a').count(),5);
+ await page.goto(base);await page.locator('.site-welcome').waitFor();assert.equal(await page.locator('.site-sidebar .site-nav-item').count(),5);
+ await page.locator('.site-library-group summary').click();await page.locator('.site-library-submenu a').first().click();assert.equal(await page.evaluate(()=>state.libraryType),'courses');
+ await page.locator('.site-library-submenu a').last().click();assert.equal(await page.evaluate(()=>state.libraryType),'materials');
+ await page.goBack();await page.waitForFunction(()=>state.libraryType==='courses');
  await page.screenshot({path:'artifacts/website/desktop-home.png',fullPage:true});
  for(const width of [320,375,430,768,1440]){await page.setViewportSize({width,height:900});for(const tab of ['home','library','tracks','profile','consultations']){await page.evaluate(tab=>go(tab),tab);await page.locator('.site-header').waitFor();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`overflow ${tab}/${width}`)}}
  await page.setViewportSize({width:375,height:812});await page.evaluate(()=>go('home'));await page.screenshot({path:'artifacts/website/mobile-home.png',fullPage:true});
