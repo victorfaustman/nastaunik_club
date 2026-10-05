@@ -1,0 +1,44 @@
+{
+  "tracks": [
+    {
+      "id": 1,
+      "slug": "neural-foundations",
+      "prompt": "Use case: stylized-concept. Asset: learning-track cover for Nastaŭnik, a warm editorial educational club website. Create ONE finished landscape 16:9 illustration, no text, no letters, no logo, no watermark, no interface. Premium tactile paper-cut relief mixed with matte ceramic objects, restrained warm cream, terracotta, cocoa brown and muted sage palette, soft shadows, subtle paper grain, refined contemporary editorial design, not childish, not neon tech. Central composition: all important elements fit in the middle 45 percent of the image so it crops attractively to a tall narrow thumbnail; background extends cleanly to sides. One clear main visual, readable at small size, generous breathing room. Subject: a terracotta sculptural branching network of rounded nodes emerging upward from a small open ivory book, conveys learning the foundations and gaining understanding. Simple elegant connected nodes, an inviting pathway into AI, cream background with gentle cocoa shadows.",
+      "title": "Нейросети: от основ к уверенной работе",
+      "version": 3,
+      "previous_cover": "",
+      "file": "track-neural-foundations-20261005.webp",
+      "source": "C:/Users/kopytov-windows/.codex/generated_images/01a06cb5-0844-73f1-8942-33e44addcf52/exec-9211ed2c-95ac-4302-94a3-03e5e038a4f1.png"
+    },
+    {
+      "id": 3,
+      "slug": "yandex-tools",
+      "prompt": "Use case: stylized-concept. Asset: learning-track cover for Nastaŭnik, a warm editorial educational club website. Create ONE finished landscape 16:9 illustration, no text, no letters, no logo, no watermark, no interface. Premium tactile paper-cut relief mixed with matte ceramic objects, restrained warm cream, terracotta, cocoa brown and muted sage palette, soft shadows, subtle paper grain, refined contemporary editorial design, not childish, not neon tech. Central composition: all important elements fit in the middle 45 percent of the image so it crops attractively to a tall narrow thumbnail; background extends cleanly to sides. One clear main visual, readable at small size, generous breathing room. Subject: a refined compact teacher's toolkit: a warm yellow ceramic rounded tray holding a small stack of ivory paper cards, a terracotta speech bubble and a muted sage magnifying glass. Conveys practical tools for summarizing, finding information and prompts. Yellow is a small distinguishing accent, no brand marks. Warm cream backdrop.",
+      "title": "Инструменты Яндекса для учителя: от знакомства к практике",
+      "version": 2,
+      "previous_cover": "",
+      "file": "track-yandex-tools-20261005.webp",
+      "source": "C:/Users/kopytov-windows/.codex/generated_images/01a06cb5-0844-73f1-8942-33e44addcf52/exec-54cb0c62-0d98-49c4-9d43-ea9b38c00c4c.png"
+    },
+    {
+      "id": 2,
+      "slug": "notebooklm",
+      "prompt": "Use case: stylized-concept. Asset: learning-track cover for Nastaŭnik, a warm editorial educational club website. Create ONE finished landscape 16:9 illustration, no text, no letters, no logo, no watermark, no interface. Premium tactile paper-cut relief mixed with matte ceramic objects, restrained warm cream, terracotta, cocoa brown and muted sage palette, soft shadows, subtle paper grain, refined contemporary editorial design, not childish, not neon tech. Central composition: all important elements fit in the middle 45 percent of the image so it crops attractively to a tall narrow thumbnail; background extends cleanly to sides. One clear main visual, readable at small size, generous breathing room. Subject: an open ivory notebook with blank pages, three layered source-document tabs in terracotta and sage, a subtle small pair of sculptural audio-wave arcs rising above it. Conveys organizing sources into understanding and audio summaries. Large simple book silhouette with no writing. Warm cream backdrop.",
+      "title": "NotebookLM для учителя: от основ к практике",
+      "version": 2,
+      "previous_cover": "",
+      "file": "track-notebooklm-20261005.webp",
+      "source": "C:/Users/kopytov-windows/.codex/generated_images/01a06cb5-0844-73f1-8942-33e44addcf52/exec-227f6b34-1d03-4148-8533-3500b1d79849.png"
+    },
+    {
+      "id": 4,
+      "slug": "ai-delegation",
+      "prompt": "Use case: stylized-concept. Asset: learning-track cover for Nastaŭnik, a warm editorial educational club website. Create ONE finished landscape 16:9 illustration, no text, no letters, no logo, no watermark, no interface. Premium tactile paper-cut relief mixed with matte ceramic objects, restrained warm cream, terracotta, cocoa brown and muted sage palette, soft shadows, subtle paper grain, refined contemporary editorial design, not childish, not neon tech. Central composition: all important elements fit in the middle 45 percent of the image so it crops attractively to a tall narrow thumbnail; background extends cleanly to sides. One clear main visual, readable at small size, generous breathing room. Subject: an elegant descending staircase of three rounded ivory paper task cards connected by a single terracotta ribbon pathway, the final card carries a sculptural sage checkmark. Conveys handing off tasks and gaining calm structured workflow. Strong central arrangement, no hands, no robots, no text. Warm cream backdrop.",
+      "title": "Делегирование нейросетям: от простых задач к системной работе",
+      "version": 2,
+      "previous_cover": "",
+      "file": "track-ai-delegation-20261005.webp",
+      "source": "C:/Users/kopytov-windows/.codex/generated_images/01a06cb5-0844-73f1-8942-33e44addcf52/exec-06d335ae-71b1-477f-93df-ae8bba5efd2b.png"
+    }
+  ]
+}
