@@ -12,6 +12,7 @@ async def main():
     await fixture.client.close()
     app=web.Application()
     fixture.mini.register(app);fixture.site.register(app);app.cleanup_ctx.clear()
+    await fixture.mini.consultations.initialize()
     app.router.add_get('/',fixture.site.index)
     async def code(request):
         value=await issue_code(fixture.db,request.query['token'],dict(id=43,first_name='Вячеслав',username='member'))

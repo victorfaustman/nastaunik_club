@@ -85,6 +85,8 @@ class MiniApp:
         self.test_mode_ids = test_mode_ids or set()
 
     def register(self, app: web.Application) -> None:
+        from bot.media_security import middleware
+        app.middlewares.append(middleware(self.bot_token))
         from bot.tracks import Tracks
         self.tracks = Tracks(self)
         self.tracks.register(app)
@@ -222,18 +224,26 @@ class MiniApp:
         return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-store"})
 
     async def media(self, request: web.Request) -> web.StreamResponse:
+        from bot.media_security import valid, ADMIN_COOKIE
         filename = Path(request.match_info["filename"]).name
         target = (MEDIA_DIR / filename).resolve()
         if MEDIA_DIR.resolve() not in target.parents or not target.is_file():
             raise web.HTTPNotFound()
-        return web.FileResponse(target)
+        admin = request.cookies.get(ADMIN_COOKIE, '').split('.')
+        allowed = valid(self.bot_token, 'file:'+filename, request.query.get('expires'), request.query.get('sig'))
+        if not allowed and len(admin) == 2:
+            allowed = valid(self.bot_token, 'admin', admin[0], admin[1])
+        if not allowed:
+            raise web.HTTPForbidden(text='Откройте файл из материала или урока. Ссылка отсутствует или устарела.')
+        return web.FileResponse(target, headers={'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff'})
 
     async def static(self, request: web.Request) -> web.StreamResponse:
         filename = request.match_info["filename"]
         target = (MINI_APP_DIR / "static" / filename).resolve()
         if MINI_APP_DIR.joinpath("static").resolve() not in target.parents or not target.is_file():
             raise web.HTTPNotFound()
-        return web.FileResponse(target, headers={"Cache-Control": "no-cache"})
+        cache = 'public, max-age=31536000, immutable' if request.query.get('v') else 'no-cache'
+        return web.FileResponse(target, headers={"Cache-Control": cache})
 
     def init_user(self, request: web.Request) -> dict:
         raw = request.headers.get("X-Telegram-Init-Data", "") or request.query.get("initData", "")

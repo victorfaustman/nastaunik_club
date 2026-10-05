@@ -113,6 +113,48 @@ class WebsiteTests(unittest.IsolatedAsyncioTestCase):
         data=await (await self.client.get('/mini-app/api/bootstrap',headers=h)).json()
         self.assertIsNone(data['user']['test_mode'])
 
+    async def test_metadata_ssr_404_and_security_headers(self):
+        r=await self.client.get('/material/1');text=await r.text()
+        self.assertEqual(r.status,200);self.assertIn('Body 1',text);self.assertIn('og:title',text)
+        self.assertIn('Content-Security-Policy',r.headers);self.assertIn('Strict-Transport-Security',r.headers)
+        r=await self.client.get('/material/2');text=await r.text()
+        self.assertNotIn('Body 2',text);self.assertIn('noindex',text)
+        self.assertEqual((await self.client.get('/material/999')).status,404)
+        r=await self.client.get('/site/not-a-real-page');self.assertEqual(r.status,404)
+        r=await self.client.get('/site/robots.txt');self.assertEqual(r.content_type,'text/plain');self.assertIn('Sitemap:',await r.text())
+        r=await self.client.get('/site/sitemap.xml');text=await r.text()
+        self.assertEqual(r.content_type,'application/xml');self.assertIn('/material/1</loc>',text);self.assertNotIn('/material/2</loc>',text)
+        r=await self.client.get('/site/privacy');self.assertIn('служебные cookies',(await r.text()).lower())
+
+    async def test_signed_media_expiry_range_and_admin_cookie(self):
+        from unittest.mock import patch
+        from bot.media_security import signed_text, token, ADMIN_COOKIE, signature
+        root=Path(self.tmp.name)/'media';root.mkdir();(root/'private.mp4').write_bytes(b'0123456789')
+        async with self.db.connect() as c:
+            await c.execute("UPDATE mini_app_materials SET full_description='<video src=\"/mini-app/media/private.mp4\"></video>' WHERE id=2")
+            await c.commit()
+        with patch('bot.mini_app.MEDIA_DIR',root):
+            self.assertEqual((await self.client.get('/mini-app/media/private.mp4')).status,403)
+            headers=await self.login_as()
+            text=await (await self.client.get('/mini-app/api/material/2',headers=headers)).text()
+            self.assertIn('sig=',text)
+            url=signed_text(self.mini.bot_token,'/mini-app/media/private.mp4')
+            r=await self.client.get(url,headers={'Range':'bytes=2-4'})
+            self.assertEqual(r.status,206);self.assertEqual(await r.read(),b'234');self.assertEqual(r.headers['Cache-Control'],'private, no-store')
+            self.assertEqual((await self.client.get(url.replace('private.mp4','missing.mp4'))).status,404)
+            self.assertEqual((await self.client.get('/mini-app/media/private.mp4?expires=1&sig='+signature(self.mini.bot_token,'private.mp4',1))).status,403)
+            expires,sig=token(self.mini.bot_token,'admin')
+            self.assertEqual((await self.client.get('/mini-app/media/private.mp4',headers={'Cookie':ADMIN_COOKIE+'='+expires+'.'+sig})).status,200)
+
+    async def test_media_signer_does_not_sign_user_answers(self):
+        from bot.media_security import middleware
+        async def handler(request):
+            return web.json_response({'response_text':'/mini-app/media/private.mp4','content':'/mini-app/media/lesson.mp4'})
+        from aiohttp.test_utils import make_mocked_request
+        r=await middleware(self.mini.bot_token)(make_mocked_request('GET','/mini-app/api/course/1/lesson/1'),handler)
+        payload=json.loads(r.text)
+        self.assertEqual(payload['response_text'],'/mini-app/media/private.mp4');self.assertIn('sig=',payload['content'])
+
 
 if __name__=='__main__':
     unittest.main()

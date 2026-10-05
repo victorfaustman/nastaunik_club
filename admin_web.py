@@ -324,7 +324,11 @@ class LegacyClubAdminWebApp:
                 status=401,
                 headers={"WWW-Authenticate": 'Basic realm="Nastaunik Club Admin"'},
             )
-        return await handler(request)
+        response = await handler(request)
+        from bot.media_security import ADMIN_COOKIE, token, TTL
+        expires, sig = token(self.settings.bot_token, 'admin')
+        response.set_cookie(ADMIN_COOKIE, expires+'.'+sig, max_age=TTL, secure=True, httponly=True, samesite='Strict', path='/mini-app/media/')
+        return response
 
     @asynccontextmanager
     async def connect(self):
