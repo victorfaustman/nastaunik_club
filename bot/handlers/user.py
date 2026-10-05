@@ -14,6 +14,7 @@ from bot.config import Settings
 from bot.core_sync import resolve_club_user, sync_club_membership, sync_club_payment
 from bot.database import DEFAULT_AMOUNT_LABEL, Database
 from bot.states import ReceiptStates
+from bot.foreign_access import get_request
 
 MENU_IMAGE_STATE_KEY = "last_welcome_image_at"
 MENU_IMAGE_COOLDOWN_SECONDS = 120
@@ -253,9 +254,16 @@ def create_user_router(db: Database, settings: Settings) -> Router:
 
         user = await db.get_user(actor.id)
         text = build_user_status_text(user)
+        foreign = await get_request(db, actor.id)
+        if foreign:
+            labels = {"pending": "заявка на проверке", "approved": "заявка одобрена", "rejected": "заявка отклонена"}
+            if foreign["status"] == "approved" and user.current_status == "active" and not user.access_end_at:
+                text = "Ваш статус: Не из РБ\nДоступ предоставлен до подключения международной оплаты. О дальнейших условиях сообщим отдельно."
+            else:
+                text += "\nКатегория: Не из РБ · " + labels.get(foreign["status"], foreign["status"])
         reply_markup = keyboards.user_status_keyboard(
             show_renew_button=should_show_renew_button(user),
-            club_invite_link=user.club_invite_link if user and user.current_status == "active" else None,
+            club_invite_link=(foreign["invite_link"] if foreign and foreign["status"] == "approved" else settings.club_invite_link) if user and user.current_status == "active" else None,
             hide_entry_actions=should_hide_entry_actions(user),
         )
 
@@ -282,6 +290,13 @@ def create_user_router(db: Database, settings: Settings) -> Router:
     async def status_command_handler(message: Message) -> None:
         await ensure_user(message)
         await show_user_status(message)
+
+    @router.callback_query(F.data == "maintenance:info")
+    async def old_holiday_button(callback: CallbackQuery, state: FSMContext) -> None:
+        await reset_state_preserving_menu_image(state)
+        if callback.from_user:
+            await db.upsert_user(callback.from_user.id, callback.from_user.username, callback.from_user.full_name)
+        await render_menu(callback, "main")
 
     @router.callback_query(F.data.startswith("menu:"))
     async def menu_handler(callback: CallbackQuery, state: FSMContext) -> None:

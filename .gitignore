@@ -11,3 +11,4 @@ venv/
 .DS_Store
 private_receipts/
 artifacts/tracks/
+artifacts/website/

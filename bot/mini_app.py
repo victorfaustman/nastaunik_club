@@ -240,15 +240,26 @@ class MiniApp:
         return validate_init_data(raw, self.bot_token)
 
     async def authorised(self, request: web.Request):
-        try:
-            tg_user = self.init_user(request)
-        except ValueError as exc:
-            raise web.HTTPUnauthorized(text=str(exc)) from exc
-        await self.db.upsert_user(tg_user["id"], tg_user.get("username"),
-                                  " ".join(filter(None, [tg_user.get("first_name"), tg_user.get("last_name")])) or "Telegram user")
+        raw = request.headers.get('X-Telegram-Init-Data', '') or request.query.get('initData', '')
+        if raw:
+            try:
+                tg_user = self.init_user(request)
+            except ValueError as exc:
+                raise web.HTTPUnauthorized(text=str(exc)) from exc
+        else:
+            auth = getattr(self, 'website_auth', None)
+            tg_user = await auth.identity(request) if auth else None
+            if not tg_user and request.method == 'GET' and request.headers.get('X-Nastaunik-Site') == '1':
+                tg_user = {'id': 0, 'first_name': '', 'last_name': '', 'username': None}
+            if not tg_user:
+                raise web.HTTPUnauthorized(text='Войдите через Telegram, чтобы продолжить.')
+        if tg_user['id']:
+            await self.db.upsert_user(tg_user["id"], tg_user.get("username"),
+                                      " ".join(filter(None, [tg_user.get("first_name"), tg_user.get("last_name")])) or "Telegram user")
         record = await self.db.get_user(tg_user["id"])
         state = access_state(record)
         user = {
+            "guest": not bool(tg_user['id']),
             "telegram_id": tg_user["id"], "username": tg_user.get("username"),
             "first_name": tg_user.get("first_name", ""), "last_name": tg_user.get("last_name", ""),
             "full_name": record.full_name if record else "Telegram user", "state": state,

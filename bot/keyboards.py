@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -81,7 +81,8 @@ def question_keyboard(owner_contact_url: str, *, hide_entry_actions: bool = Fals
 
 
 def payment_keyboard(*, hide_entry_actions: bool = False) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text="Я оплатил", callback_data="payment:send_receipt")]]
+    rows = [[InlineKeyboardButton(text="Я оплатил", callback_data="payment:send_receipt")],
+            [InlineKeyboardButton(text="Я не из Беларуси", callback_data="foreign:request")]]
     rows.extend(
         [
             [InlineKeyboardButton(text="Задать вопрос", callback_data="menu:question")],

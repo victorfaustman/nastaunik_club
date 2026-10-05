@@ -193,6 +193,7 @@ class OwnerTestModeTests(unittest.TestCase):
                 self.assertEqual(course_state, 0)
 
                 outsider_request = SimpleNamespace(
+                    path="/mini-app/api/bootstrap",
                     headers={
                         "X-Telegram-Init-Data": init_data(user_id=43),
                         "X-Nastaunik-Test-Mode": "1",

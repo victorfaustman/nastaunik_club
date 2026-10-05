@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import logging
@@ -21,6 +21,8 @@ from bot.config import load_settings
 from bot.maintenance import MAINTENANCE_MODE, MaintenanceGateMiddleware
 from bot.database import Database
 from bot.handlers import create_admin_router, create_user_router
+from bot.foreign_access import initialize, create_foreign_router
+from bot.website_auth import create_website_router
 from bot.scheduler import run_subscription_checks
 
 
@@ -63,6 +65,7 @@ async def main() -> None:
 
     db = Database(settings.database_path)
     await db.init()
+    await initialize(db)
 
     bot = Bot(
         token=settings.bot_token,
@@ -75,6 +78,8 @@ async def main() -> None:
         maintenance_gate = MaintenanceGateMiddleware(settings.admin_ids)
         dp.message.middleware(maintenance_gate)
         dp.callback_query.middleware(maintenance_gate)
+    dp.include_router(create_website_router(db))
+    dp.include_router(create_foreign_router(db, settings))
     dp.include_router(create_admin_router(db, settings))
     dp.include_router(create_user_router(db, settings))
 

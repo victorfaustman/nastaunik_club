@@ -18,6 +18,7 @@ import aiosqlite
 from aiohttp import ClientSession, ClientTimeout
 from aiohttp import web
 from dotenv import load_dotenv
+from bot.foreign_access import SCHEMA as FOREIGN_SCHEMA
 
 from bot.database import Database
 from bot.learning_admin_v2 import LearningAdmin
@@ -61,6 +62,10 @@ BROADCAST_TYPE_FILTERS = {
     "special_any": "Все особенные",
     "special_rate": "Особый тариф",
     "free": "Вечно бесплатные",
+    "foreign": "Не из РБ",
+    "foreign_approved": "Не из РБ · одобрены",
+    "foreign_pending": "Не из РБ · на проверке",
+    "foreign_rejected": "Не из РБ · отказ",
 }
 CLIENT_STATUS_FILTERS = {
     "any": "Все статусы",
@@ -219,6 +224,9 @@ def month_label(month_key: str) -> str:
 
 def special_label(row: sqlite3.Row) -> str:
     labels: list[str] = []
+    if "foreign_status" in row.keys() and row["foreign_status"]:
+        states = {"pending": "на проверке", "approved": "одобрено", "rejected": "отказ"}
+        labels.append("Не из РБ · " + states.get(row["foreign_status"], row["foreign_status"]))
     if int(row["is_lifetime_free"] or 0):
         labels.append("вечный бесплатный")
     recurring = row["recurring_amount_label"]
@@ -231,7 +239,7 @@ def is_in_club(row: sqlite3.Row) -> bool:
     return row["current_status"] in {"active", "grace_period"} or bool(row["is_lifetime_free"])
 
 
-class ClubAdminWebApp:
+class LegacyClubAdminWebApp:
     def __init__(self, settings: WebSettings):
         self.settings = settings
         self._admin_tables_ready = False
@@ -241,11 +249,11 @@ class ClubAdminWebApp:
         self.learning_admin = LearningAdmin(settings.database_path, self.url)
         def public_learning_url(path: str = "/", **query: object) -> str:
             if path.endswith("/action"):
-                target = "/learning-action"
+                target = "/admin/action"
             elif path.endswith("/learning"):
-                target = "/"
+                target = "/admin/"
             else:
-                target = "/"
+                target = "/admin/"
             if query:
                 target = f"{target}?{urlencode(query)}"
             return target
@@ -287,6 +295,9 @@ class ClubAdminWebApp:
         app.router.add_post("/public-learning/action", self.public_learning_admin.action)
         app.cleanup_ctx.append(self.learning_admin.video_worker_context)
         self.mini_app.register(app)
+        from bot.website import Website
+        self.website = Website(self.mini_app)
+        self.website.register(app)
         return app
 
     def url(self, path: str = "/", **query: object) -> str:
@@ -299,7 +310,7 @@ class ClubAdminWebApp:
 
     @web.middleware
     async def auth_middleware(self, request: web.Request, handler):
-        if request.path == "/health" or (
+        if request.path == "/health" or request.path.startswith('/site/') or (
             request.path.startswith("/mini-app/") and request.path != "/mini-app/preview"
         ):
             return await handler(request)
@@ -334,6 +345,7 @@ class ClubAdminWebApp:
             if self._admin_tables_ready:
                 return
             async with self.connect() as db:
+                await db.execute(FOREIGN_SCHEMA)
                 await db.execute(
                     """
                     CREATE TABLE IF NOT EXISTS broadcast_logs (
@@ -735,7 +747,7 @@ class ClubAdminWebApp:
         if telegram_id in self.settings.excluded_ids:
             raise web.HTTPNotFound(text="User not found")
         async with self.connect() as db:
-            user_cursor = await db.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+            user_cursor = await db.execute("SELECT u.*, (SELECT status FROM foreign_requests f WHERE f.telegram_id=u.telegram_id) AS foreign_status FROM users u WHERE telegram_id = ?", (telegram_id,))
             user = await user_cursor.fetchone()
             payment_cursor = await db.execute(
                 "SELECT * FROM payments WHERE telegram_id = ? ORDER BY created_at DESC LIMIT 30",
@@ -853,7 +865,7 @@ class ClubAdminWebApp:
 
     async def load_user(self, telegram_id: int) -> sqlite3.Row | None:
         async with self.connect() as db:
-            cursor = await db.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+            cursor = await db.execute("SELECT u.*, (SELECT status FROM foreign_requests f WHERE f.telegram_id=u.telegram_id) AS foreign_status FROM users u WHERE telegram_id = ?", (telegram_id,))
             return await cursor.fetchone()
 
     async def restore_access(self, request: web.Request) -> web.Response:
@@ -864,7 +876,7 @@ class ClubAdminWebApp:
             raise web.HTTPServiceUnavailable(text="BOT_TOKEN or CLUB_INVITE_LINK is not configured")
 
         async with self.connect() as db:
-            cursor = await db.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+            cursor = await db.execute("SELECT u.*, (SELECT status FROM foreign_requests f WHERE f.telegram_id=u.telegram_id) AS foreign_status FROM users u WHERE telegram_id = ?", (telegram_id,))
             user = await cursor.fetchone()
         if user is None:
             raise web.HTTPNotFound(text="User not found")
@@ -1255,7 +1267,10 @@ class ClubAdminWebApp:
         elif status_filter != "any":
             raise ValueError("Unknown broadcast status filter")
 
-        if type_filter == "regular":
+        if type_filter in {"foreign", "foreign_approved", "foreign_pending", "foreign_rejected"}:
+            where.append("EXISTS (SELECT 1 FROM foreign_requests f WHERE f.telegram_id=u.telegram_id AND (?='foreign' OR f.status=?))")
+            params.extend([type_filter, type_filter.removeprefix("foreign_")])
+        elif type_filter == "regular":
             where.append(f"NOT {self.special_condition(alias='u')}")
             params.append(DEFAULT_AMOUNT_LABEL)
         elif type_filter == "special_any":
@@ -1832,7 +1847,10 @@ class ClubAdminWebApp:
                 params.append((datetime.utcnow() + timedelta(days=expiring_days)).date().isoformat())
 
         if type_filter != "any":
-            if type_filter == "regular":
+            if type_filter in {"foreign", "foreign_approved", "foreign_pending", "foreign_rejected"}:
+                where.append("EXISTS (SELECT 1 FROM foreign_requests f WHERE f.telegram_id=u.telegram_id AND (?='foreign' OR f.status=?))")
+                params.extend([type_filter, type_filter.removeprefix("foreign_")])
+            elif type_filter == "regular":
                 where.append(f"NOT {self.special_condition(alias='u')}")
                 params.append(DEFAULT_AMOUNT_LABEL)
             elif type_filter == "special_any":
@@ -1852,6 +1870,7 @@ class ClubAdminWebApp:
         sql = f"""
             SELECT
                 u.*,
+                (SELECT status FROM foreign_requests f WHERE f.telegram_id=u.telegram_id) AS foreign_status,
                 u.payment_confirmed_at AS last_paid_at,
                 COALESCE(u.recurring_amount_label, ?) AS last_amount_label,
                 (
@@ -3135,7 +3154,6 @@ class ClubAdminWebApp:
             ("clients", "Клиенты", self.url("/clients")),
             ("finance", "Финансы", self.url("/finance")),
             ("broadcasts", "Рассылки", self.url("/broadcasts")),
-            ("learning", "Обучение", self.url("/learning")),
         ]
         nav_html = "".join(
             f'<a class="side-link {"active" if key == active else ""}" href="{esc(href)}">{esc(label)}</a>'
@@ -3414,6 +3432,13 @@ class ClubAdminWebApp:
   </script>
 </body>
 </html>"""
+
+
+from crm_ui import ModernCRM
+
+
+class ClubAdminWebApp(ModernCRM, LegacyClubAdminWebApp):
+    """Modern presentation with all production integrations preserved."""
 
 
 def main() -> None:

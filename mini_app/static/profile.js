@@ -129,6 +129,7 @@ window.sendProfileReceipt = event => {
   xhr.open('POST', '/mini-app/api/payment/receipt');
   xhr.timeout = 120000;
   xhr.setRequestHeader('X-Telegram-Init-Data', initData());
+  if(window.NASTAUNIK_SITE_CSRF)xhr.setRequestHeader('X-Nastaunik-CSRF',window.NASTAUNIK_SITE_CSRF);
   xhr.setRequestHeader('X-Payment-Request', receiptRequestId);
   if (state.testMode) xhr.setRequestHeader('X-Nastaunik-Test-Mode', state.testMode);
   xhr.upload.onprogress = e => { if (e.lengthComputable) progress.value = Math.round(e.loaded/e.total*100); };
