@@ -38,7 +38,7 @@ class Website:
         # BotFather's existing main-app URL may still point at the domain root.
         # Preserve Telegram's launch data and open the original Mini App there.
         html = html.replace('</head>', '<script>if(new URLSearchParams(location.hash.slice(1)).has("tgWebAppData")){location.replace("/mini-app/"+location.search+location.hash)}window.NASTAUNIK_SITE=true;</script><link rel="stylesheet" href="/site/static/site.css?v=7"></head>')
-        html = html.replace('</body>', '<script defer src="/site/static/site.js?v=7"></script></body>')
+        html = html.replace('</body>', '<script defer src="/site/static/site.js?v=9"></script></body>')
         response = web.Response(text=html, status=meta['status'], content_type='text/html', headers={'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin', 'X-Frame-Options': 'SAMEORIGIN'})
         return response
 

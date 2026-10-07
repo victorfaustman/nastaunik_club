@@ -24,7 +24,7 @@ class TrackAdmin:
             courses = [dict(r) for r in await (await conn.execute("SELECT id,title FROM mini_app_courses WHERE status='published' ORDER BY sort_order,id")).fetchall()]
             steps = [dict(r) for r in await (await conn.execute('SELECT * FROM mini_app_track_steps WHERE track_id=? ORDER BY sort_order,id', (track_id,))).fetchall()]
         if track_id is None:
-            cards = ''.join(f'''<article class="course-card"><div><h2>{esc(t['title'])}</h2><p>{esc(t['description'])}</p><small>{LEVELS.get(t['level'], '')} · {'Опубликован' if t['status']=='published' else 'Скрыт'}</small></div><a class="button" href="{self.url(track=t['id'])}">Открыть</a></article>''' for t in tracks)
+            cards = ''.join(f'''<article class="course-card"><div><h2>{i+1}. {esc(t['title'])}</h2><p>{esc(t['description'])}</p><small>{LEVELS.get(t['level'], '')} · {'Опубликован' if t['status']=='published' else 'Скрыт'}</small></div><div class="actions"><a class="button" href="{self.url(track=t['id'])}">Открыть</a><form method="post" action="{self.owner.course_admin.action_url}"><input type="hidden" name="action" value="track_move"><input type="hidden" name="track_id" value="{t['id']}"><input type="hidden" name="version" value="{t['version']}"><button name="direction" value="up" aria-label="Переместить трек выше" {'disabled' if i==0 else ''}>↑</button><button name="direction" value="down" aria-label="Переместить трек ниже" {'disabled' if i==len(tracks)-1 else ''}>↓</button></form></div></article>''' for i,t in enumerate(tracks))
             body = f'<div class="top"><div><h1>Треки обучения</h1><p>Соберите понятный путь из материалов и курсов клуба.</p></div><a class="button" href="{self.url(track="new")}">＋ Создать трек</a></div>{cards or "<div class=empty>Здесь будут маршруты обучения. Начните с первого трека.</div>"}'
         else:
             track = next((t for t in tracks if str(t['id']) == track_id), None)
@@ -43,12 +43,12 @@ class TrackAdmin:
               <input type="hidden" name="action" value="track_save"><input type="hidden" name="track_id" value="{track['id']}"><input type="hidden" name="version" value="{track['version']}"><input type="hidden" name="steps" id="track-steps-value">
               <div class="layout"><section class="panel"><label class="field">Название<input name="title" value="{esc(track['title'])}" required maxlength="180"></label><label class="field">Описание<textarea name="description" maxlength="3000">{esc(track['description'])}</textarea></label><h2>Путь обучения</h2><p class="hint">Добавьте готовые материалы и курсы. Перетаскивайте шаги или используйте стрелки.</p><div id="track-steps"></div><button type="button" class="secondary" id="track-add">＋ Добавить шаг</button>
               <dialog id="track-picker"><h2>Что добавить в трек?</h2><input type="search" id="track-search" placeholder="Поиск материала или курса" aria-label="Поиск"><div id="track-options"></div><button type="button" id="track-close">Готово</button></dialog></section>
-              <aside class="panel"><label class="field">Уровень<select name="level">{options}</select></label><label class="field">Позиция в списке<input type="number" min="0" name="sort_order" value="{track['sort_order']}"></label>
+              <aside class="panel"><label class="field">Уровень<select name="level">{options}</select></label><label class="field">Позиция в списке<input type="number" min="1" name="position" value="{track['sort_order']+1}"></label>
               {f'<img class="track-cover" src="{esc(track["cover_url"])}" alt="Обложка"><label><input type="checkbox" name="remove_cover" value="1"> Убрать обложку</label>' if track['cover_url'] else ''}
               <label class="field">Обложка, необязательно<input type="file" name="cover" accept="image/jpeg,image/png,image/webp"></label><label class="checkbox"><input name="published" type="checkbox" value="1" {'checked' if track['status']=='published' else ''}>Показывать в Mini App</label><p class="hint">Доступ к каждому шагу определяется настройками самого материала или курса.</p><button type="submit">Сохранить трек</button><p id="track-save-status" role="status"></p></aside></div></form>
               {preview}{analytics}
               {delete_form}
-              <script type="application/json" id="track-config">{config}</script><script src="/mini-app/static/track-admin.js?v=1" defer></script>'''
+              <script type="application/json" id="track-config">{config}</script><script src="/mini-app/static/track-admin.js?v=3" defer></script>'''
         return web.Response(text=f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Треки · Nastaŭnik</title><style>{self.owner.course_admin.styles()}
         .track-cover{{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:12px}}dialog{{width:min(650px,94vw);max-height:85vh;border:1px solid var(--line);border-radius:18px;padding:24px}}dialog::backdrop{{background:#20191488}}#track-options{{max-height:50vh;overflow:auto;margin:16px 0}}.track-step{{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;margin:10px 0;background:var(--paper)}}.track-step b{{flex:1;overflow-wrap:anywhere}}.track-step button{{padding:10px}}.track-option{{width:100%;text-align:left;justify-content:start;background:var(--soft);color:var(--ink);margin:4px 0}}input[type=checkbox]{{width:auto}}@media(max-width:700px){{.layout{{display:block}}.track-step{{flex-wrap:wrap}}.top{{align-items:start;flex-direction:column}}}}</style></head><body><main>{self.owner.course_admin.tabs('tracks')}{'<p class="saved">Сохранено</p>' if request.query.get('saved') else ''}{body}</main></body></html>''', content_type='text/html')
 
@@ -72,7 +72,7 @@ class TrackAdmin:
         try:
             track_id = int(form.get('track_id') or 0)
             version = int(form.get('version') or 0)
-            order = max(0, int(form.get('sort_order') or 0))
+            order = max(0, int(form['position']) - 1) if form.get('position') else max(0, int(form.get('sort_order') or 0))
             steps = json.loads(str(form.get('steps') or '[]'))
         except (ValueError, TypeError):
             raise web.HTTPBadRequest(text='Некорректные данные трека')
@@ -81,6 +81,18 @@ class TrackAdmin:
             old = await (await conn.execute('SELECT * FROM mini_app_tracks WHERE id=?', (track_id,))).fetchone()
             if track_id and (not old or old['version'] != version):
                 raise web.HTTPConflict(text='Трек уже изменён. Откройте его заново, чтобы не потерять чужие изменения.')
+            if form['action'] == 'track_move':
+                if not old or form.get('direction') not in {'up', 'down'}:
+                    raise web.HTTPBadRequest(text='Некорректное перемещение')
+                ordered = [r['id'] for r in await (await conn.execute('SELECT id FROM mini_app_tracks ORDER BY sort_order,id')).fetchall()]
+                index = ordered.index(track_id)
+                destination = index + (-1 if form['direction'] == 'up' else 1)
+                if 0 <= destination < len(ordered):
+                    ordered[index], ordered[destination] = ordered[destination], ordered[index]
+                    for position, identity in enumerate(ordered):
+                        await conn.execute('UPDATE mini_app_tracks SET sort_order=?,version=version+1,updated_at=? WHERE id=?', (position, stamp(), identity))
+                await conn.commit()
+                raise web.HTTPSeeOther(self.url())
             if form['action'] == 'track_delete':
                 await conn.execute('DELETE FROM mini_app_tracks WHERE id=?', (track_id,))
                 await conn.commit()

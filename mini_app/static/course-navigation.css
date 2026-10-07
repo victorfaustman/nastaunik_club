@@ -1,0 +1,11 @@
+/* Explicit colors: currentColor made the retry button text and background equal. */
+.lesson-test-result.wrong button {
+  background: #9e5544;
+  color: #fff;
+  min-height: 44px;
+  padding: 10px 16px;
+}
+.lesson-test-result.wrong button:hover { background: #854332; color: #fff; }
+.lesson-test-result.wrong button:focus-visible { outline: 3px solid #9e5544; outline-offset: 3px; }
+.lesson-navigation .lesson-next:disabled { opacity: .55; cursor: not-allowed; }
+.lesson-question-hint { grid-column: 1 / -1; margin: 4px 0 0; color: var(--ink); font-size: 13px; }

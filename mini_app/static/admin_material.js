@@ -244,6 +244,23 @@ document.addEventListener('DOMContentLoaded', () => {
       strong.textContent = title;
       const small = document.createElement('small');
       small.textContent = detail;
+      if (job.status === 'failed') {
+        const invalid = /moov atom|Invalid data/i.test(job.error || '');
+        small.textContent = invalid ? 'MP4 повреждён или загружен не полностью. Загрузите исходное видео заново.' : /height not divisible/i.test(job.error || '') ? 'Размер видео не поддерживался. Теперь можно повторить обработку.' : 'Обработка не завершилась. Исходный файл сохранён; можно повторить попытку.';
+        if (!invalid) {
+          const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'secondary'; retry.textContent = 'Повторить обработку';
+          retry.onclick = async () => {
+            retry.disabled = true;
+            const body = new FormData(); body.set('action', 'video_retry'); body.set('material_id', materialId); body.set('stored_name', job.stored_name);
+            try {
+              const response = await fetch(form.getAttribute('action'), {method: 'POST', body});
+              if (!response.ok) throw Error(await response.text());
+              await pollVideoJobs();
+            } catch (error) { small.textContent = error.message || 'Нет связи. Повторите попытку.'; retry.disabled = false; }
+          };
+          copy.append(retry);
+        }
+      }
       copy.append(strong, small);
       row.append(iconNode, copy);
       return row;

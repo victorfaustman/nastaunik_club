@@ -43,6 +43,8 @@
   const setState = (form, text, error = false) => {
     const state = form.querySelector("[data-save-state]") || form.querySelector(".editor-save");
     if (!state) return;
+    state.setAttribute("role", "status");
+    state.setAttribute("aria-live", "polite");
     state.textContent = text;
     state.classList.toggle("is-error", error);
   };
@@ -66,6 +68,7 @@
       form.__autosaveQueued = true;
       return;
     }
+    const snapshot = JSON.stringify(serialize(form));
     form.__autosaveBusy = true;
     form.__autosaveQueued = false;
     setState(form, "Сохраняем…");
@@ -78,15 +81,17 @@
       });
       body.set("autosave", "1");
       body.set("ajax", "1");
-      const response = await fetch(form.action || location.href, {
+      const response = await fetch(form.getAttribute('action') || location.href, {
         method: "POST",
         body,
         credentials: "same-origin",
         headers: {"X-Requested-With": "XMLHttpRequest"},
       });
       if (!response.ok) throw new Error(await response.text());
-      clearRemembered(form);
-      setState(form, `Сохранено в ${new Date().toLocaleTimeString("ru-RU", {hour: "2-digit", minute: "2-digit"})}`);
+      if (snapshot === JSON.stringify(serialize(form))) clearRemembered(form);
+      else form.__autosaveQueued = true;
+      const pendingFile = [...form.elements].some(field => field.type === 'file' && field.files?.length);
+      setState(form, pendingFile ? 'Текст сохранён. Нажмите «Сохранить», чтобы загрузить выбранный файл.' : `Сохранено в ${new Date().toLocaleTimeString("ru-RU", {hour: "2-digit", minute: "2-digit"})}`);
     } catch (error) {
       setState(form, "Не удалось сохранить. Черновик остался в этом браузере.", true);
     } finally {
@@ -107,15 +112,19 @@
   document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll("form[data-autosave]").forEach((form) => {
       try {
+        if (new URLSearchParams(location.search).get('saved') === '1') clearRemembered(form);
         const saved = JSON.parse(localStorage.getItem(autosaveKey(form)) || "null");
-        if (saved?.values) {
+        if (saved?.values && JSON.stringify(saved.values) !== JSON.stringify(serialize(form))) {
           restore(form, saved.values);
           setState(form, "Восстановлен несохранённый черновик");
         }
       } catch (_) {}
 
       form.addEventListener("input", (event) => {
-        if (event.target.type === "file") return;
+        if (event.target.type === "file") {
+          setState(form, 'Файл выбран. Нажмите «Сохранить», чтобы загрузить его.');
+          return;
+        }
         if (form.id === "article-form" && event.target.isContentEditable) {
           remember(form);
           return;
@@ -125,7 +134,7 @@
       form.addEventListener("change", (event) => {
         if (event.target.type !== "file") schedule(form);
       });
-      form.addEventListener("submit", () => clearRemembered(form));
+      form.addEventListener("submit", () => remember(form));
     });
   });
 })();

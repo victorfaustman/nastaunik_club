@@ -4,6 +4,8 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient,TestServer
 from tests.test_website import WebsiteTests
 from bot.website_auth import issue_code
+from bot.learning_admin_v2 import LearningAdmin
+from urllib.parse import urlencode
 
 
 async def main():
@@ -18,11 +20,15 @@ async def main():
         value=await issue_code(fixture.db,request.query['token'],dict(id=43,first_name='Вячеслав',username='member'))
         return web.json_response({'code':value})
     app.router.add_get('/test/code',code)
+    admin = LearningAdmin(fixture.db.path, lambda path, **query: ('/admin/action' if path.endswith('/action') else '/admin/') + '?' + urlencode(query))
+    app.router.add_get('/admin/', admin.page)
+    app.router.add_post('/admin/action', admin.action)
     app.router.add_get('/{page:.*}',fixture.site.index)
     fixture.client=TestClient(TestServer(app));await fixture.client.start_server()
     fixture.site.auth.origin=str(fixture.client.make_url('/')).rstrip('/')
     async with fixture.db.connect() as conn:
         await conn.execute("INSERT INTO mini_app_course_blocks(lesson_id,block_type,content,created_at,updated_at) VALUES(2,'longread','<p>Учебный текст</p>','now','now')")
+        await conn.execute("INSERT INTO mini_app_course_blocks(lesson_id,block_type,material_id,created_at,updated_at) VALUES(2,'longread',1,'now','now')")
         await conn.commit()
     print(fixture.client.make_url('/'),flush=True)
     try:

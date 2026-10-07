@@ -241,7 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
         data.set('block_id', status.dataset.videoBlockId);
         data.set('ajax', '1');
         try {
-          const response = await fetch(form.action, { method: 'POST', body: data });
+          const response = await fetch(form.getAttribute('action'), { method: 'POST', body: data });
           if (!response.ok) continue;
           const value = await response.json();
           const next = value.status || 'ready';
