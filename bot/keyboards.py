@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+CLUB_WEBSITE_URL = "https://nastaunik.aiteacher.by/"
+
 
 def _join_button(text: str = "Вступить в клуб") -> InlineKeyboardButton:
     return InlineKeyboardButton(text=text, callback_data="menu:join", style="success")
@@ -12,18 +14,19 @@ def main_menu_keyboard(*, show_renew_button: bool = False, hide_entry_actions: b
     if not hide_entry_actions:
         primary_entry_text = "Продлить участие в клубе" if show_renew_button else "Вступить в клуб"
         rows.append([_join_button(primary_entry_text)])
-    if mini_app_url:
-        rows.append([InlineKeyboardButton(text="Открыть Mini App", url=mini_app_url)])
+    # Keep mini_app_url in the signature for existing callers; the main menu
+    # now links to the browser site instead of duplicating Telegram's app entry.
     rows.extend(
         [
             [InlineKeyboardButton(text="Мой статус", callback_data="menu:status")],
             [InlineKeyboardButton(text="О клубе", callback_data="menu:about")],
             [InlineKeyboardButton(text="Что внутри", callback_data="menu:inside")],
             [InlineKeyboardButton(text="Об авторе", callback_data="menu:author")],
-            [InlineKeyboardButton(text="Как оплатить", callback_data="menu:payment")],
+            [InlineKeyboardButton(text="Как оплатить", callback_data="menu:payment", style="success")],
             [InlineKeyboardButton(text="Задать вопрос", callback_data="menu:question")],
         ]
     )
+    rows.append([InlineKeyboardButton(text="Открыть сайт клуба", url=CLUB_WEBSITE_URL, style="primary")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -40,7 +43,7 @@ def about_keyboard(*, hide_entry_actions: bool = False) -> InlineKeyboardMarkup:
 
 
 def inside_keyboard(*, hide_entry_actions: bool = False) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text="Как оплатить", callback_data="menu:payment")]]
+    rows = [[InlineKeyboardButton(text="Как оплатить", callback_data="menu:payment", style="success")]]
     if not hide_entry_actions:
         rows.extend(
             [
@@ -123,7 +126,7 @@ def trial_finished_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [_join_button()],
-            [InlineKeyboardButton(text="Как оплатить", callback_data="menu:payment")],
+            [InlineKeyboardButton(text="Как оплатить", callback_data="menu:payment", style="success")],
             [InlineKeyboardButton(text="Задать вопрос", callback_data="menu:question")],
         ]
     )
@@ -160,7 +163,7 @@ def reminder_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [_join_button("Продлить участие в клубе")],
-            [InlineKeyboardButton(text="Как оплатить", callback_data="menu:payment")],
+            [InlineKeyboardButton(text="Как оплатить", callback_data="menu:payment", style="success")],
             [InlineKeyboardButton(text="Задать вопрос", callback_data="menu:question")],
         ]
     )
@@ -170,7 +173,7 @@ def expired_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [_join_button("Продлить участие в клубе")],
-            [InlineKeyboardButton(text="Как оплатить", callback_data="menu:payment")],
+            [InlineKeyboardButton(text="Как оплатить", callback_data="menu:payment", style="success")],
             [InlineKeyboardButton(text="Задать вопрос", callback_data="menu:question")],
         ]
     )
