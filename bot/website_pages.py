@@ -12,6 +12,8 @@ INFO={
  '/privacy':'<p>Для входа используется Telegram. Аккаунт связан с Telegram ID; имя и username используются в профиле и для связи.</p><p>Сохраняются подписка и прогресс, а также записи на консультации, ответы на задания, отзывы и подтверждения оплаты, если вы их отправляете. Служебные cookies обеспечивают вход и защиту запросов.</p><p>Не отправляйте персональные данные учеников. По вопросам обработки своих данных или удаления аккаунта обратитесь в поддержку через бота.</p><p>Это описание работы сервиса. Юридические условия и сроки хранения требуют отдельного согласования с владельцем.</p>',
  '/rules':'<p>Открытые материалы и курсы отмечены как бесплатные. Закрытый контент и запись на консультации доступны при действующей подписке клуба.</p><p>Текущие условия вступления и инструкции по оплате находятся в профиле и боте. Доступ предоставляется после подтверждения оплаты.</p><p>Уважайте авторство. Не передавайте закрытые файлы и ссылки третьим лицам.</p>'}
 
+INFO['/privacy'] += '<p>Для статистики посещаемости сайт использует случайный идентификатор вкладки в sessionStorage, без аналитических cookies. В счётчике сохраняются дата, адрес страницы без параметров и домен источника перехода; IP-адрес, Telegram ID и содержимое страниц в него не записываются. Идентификатор на сервере меняется ежедневно, данные хранятся до 90 дней. Настройки Do Not Track и Global Privacy Control отключают счётчик.</p>'
+
 @web.middleware
 async def security_headers(request, handler):
     try: response=await handler(request)
@@ -27,15 +29,31 @@ async def page_meta(site, request):
     if path=='/robots.txt':
         return web.Response(text='User-agent: *\nDisallow: /admin\nDisallow: /mini-app/api/\nDisallow: /mini-app/preview\nDisallow: /site/auth/\nDisallow: /profile\nSitemap: '+ORIGIN+'/sitemap.xml\n',content_type='text/plain')
     if path=='/sitemap.xml':
-        paths=['/','/library','/tracks','/support','/rules']
+        paths=['/','/library','/library?type=materials','/library?type=courses','/tracks','/support','/rules']
         async with site.mini.db.connect() as conn:
             for table,prefix,extra in [('mini_app_materials','material',' AND library_visible=1'),('mini_app_courses','course','')]:
                 rows=await (await conn.execute(f"SELECT id FROM {table} WHERE status='published' AND is_free=1{extra}")).fetchall()
                 paths.extend(f'/{prefix}/{row[0]}' for row in rows)
+            rows=await (await conn.execute("SELECT id FROM mini_app_tracks WHERE status='published'")).fetchall()
+            paths.extend(f'/track/{row[0]}' for row in rows)
         return web.Response(text='<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'+''.join('<url><loc>'+escape(ORIGIN+p)+'</loc></url>' for p in paths)+'</urlset>',content_type='application/xml',headers={'Cache-Control':'public, max-age=300'})
     title,description=PAGES.get(path,('Страница не найдена','Такой страницы нет. Вернитесь в библиотеку клуба.'))
     status=200 if path in PAGES else 404
     body,cover,private=INFO.get(path,''),'',path=='/profile'
+    # Public navigation/content must be discoverable without executing the app.
+    if path in {'/', '/library', '/tracks'}:
+        body='<p>'+escape(description)+'</p><nav><a href="/library?type=materials">Материалы</a> · <a href="/library?type=courses">Курсы</a> · <a href="/tracks">Треки обучения</a></nav>'
+        async with site.mini.db.connect() as conn:
+            if path=='/tracks':
+                rows=await (await conn.execute("SELECT id,title,description FROM mini_app_tracks WHERE status='published' ORDER BY sort_order,id")).fetchall()
+                body+='<ul>'+''.join('<li><a href="/track/'+str(row['id'])+'">'+escape(row['title'])+'</a></li>' for row in rows)+'</ul>'
+            else:
+                chosen=request.query.get('type') if path=='/library' else None
+                for table,prefix,label,extra in [('mini_app_materials','material','Открытые материалы',' AND library_visible=1'),('mini_app_courses','course','Открытые курсы','')]:
+                    if chosen in {'materials','courses'} and chosen!=prefix+'s':
+                        continue
+                    rows=await (await conn.execute(f"SELECT id,title FROM {table} WHERE status='published' AND is_free=1{extra} ORDER BY id")).fetchall()
+                    body+='<h2>'+label+'</h2><ul>'+''.join('<li><a href="/'+prefix+'/'+str(row['id'])+'">'+escape(row['title'])+'</a></li>' for row in rows)+'</ul>'
     match=re.fullmatch(r'/(material|course|track)/(\d+)(?:/lesson/(\d+))?',path)
     if match:
         kind,item_id,lesson=match.groups()

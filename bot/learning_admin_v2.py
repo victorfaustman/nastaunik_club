@@ -224,6 +224,9 @@ class LearningAdmin:
 
     async def page(self, request: web.Request) -> web.Response:
         await self.schema.init()
+        if request.query.get('section') == 'visitors':
+            from bot.website_metrics import admin_page
+            return await admin_page(self, request)
         if request.query.get('section') == 'tracks':
             return await self.track_admin.page(request)
         if request.query.get('section') == 'consultations':
@@ -346,7 +349,7 @@ class LearningAdmin:
             @media(max-width:680px){{.top,.material{{align-items:stretch;flex-direction:column}}.actions{{justify-content:flex-start}}input[name=q]{{min-width:0;width:100%}}.admin-tabs{{width:100%}}.admin-tabs a{{flex:1;text-align:center}}}}
             </style></head><body><main>{self.course_admin.tabs("materials")}
             <div class="top"><div><h1>Материалы</h1><p>Создавайте уроки и добавляйте контент. Задания добавляются отдельно.</p></div>
-            <div class="actions"><a class="button secondary" href="{self.url('/learning', analytics=1)}">Аналитика</a><a class="button" href="{self.material_url()}">+ Добавить материал</a></div></div>
+            <div class="actions"><a class="button secondary" href="{self.url('/learning', section='visitors')}">Посещаемость сайта</a><a class="button secondary" href="{self.url('/learning', analytics=1)}">Аналитика материалов</a><a class="button" href="{self.material_url()}">+ Добавить материал</a></div></div>
             <form class="toolbar" method="get"><input name="q" value="{esc(query)}" placeholder="Найти материал">
             <select name="tag"><option value="">Все теги</option>{self.tag_options(tags, [tag] if tag else [])}</select><button class="secondary">Найти</button></form>
             {cards}</main></body></html>''',

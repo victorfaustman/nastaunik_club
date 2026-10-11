@@ -3,6 +3,7 @@ from aiohttp import web
 from bot.website_auth import WebsiteAuth
 from bot.website_pages import page_meta, security_headers
 from html import escape
+from bot.website_metrics import WebsiteMetrics
 
 WEBSITE_DIR = Path(__file__).resolve().parent.parent/'website'
 MINI_DIR = Path(__file__).resolve().parent.parent/'mini_app'
@@ -12,10 +13,12 @@ class Website:
     def __init__(self, mini):
         self.mini = mini
         self.auth = WebsiteAuth(mini)
+        self.metrics = WebsiteMetrics(self)
         mini.website_auth = self.auth
 
     def register(self, app):
         self.auth.register(app)
+        self.metrics.register(app)
         app.middlewares.append(security_headers)
         app.router.add_get('/site/static/{filename}', self.static)
         app.router.add_get('/site/', self.index)
@@ -37,13 +40,13 @@ class Website:
         html = html.replace('<script defer src="https://telegram.org/js/telegram-web-app.js"></script>', '')
         # BotFather's existing main-app URL may still point at the domain root.
         # Preserve Telegram's launch data and open the original Mini App there.
-        html = html.replace('</head>', '<script>if(new URLSearchParams(location.hash.slice(1)).has("tgWebAppData")){location.replace("/mini-app/"+location.search+location.hash)}window.NASTAUNIK_SITE=true;try{document.documentElement.dataset.siteTheme=localStorage.getItem("nastaunik:site-theme")==="dark"?"dark":"light"}catch(e){document.documentElement.dataset.siteTheme="light"}</script><link rel="stylesheet" href="/site/static/site.css?v=8"></head>')
-        html = html.replace('</body>', '<script defer src="/site/static/site.js?v=10"></script></body>')
+        html = html.replace('</head>', '<script>if(new URLSearchParams(location.hash.slice(1)).has("tgWebAppData")){location.replace("/mini-app/"+location.search+location.hash)}window.NASTAUNIK_SITE=true;try{document.documentElement.dataset.siteTheme=localStorage.getItem("nastaunik:site-theme")==="dark"?"dark":"light"}catch(e){document.documentElement.dataset.siteTheme="light"}</script><link rel="stylesheet" href="/site/static/site.css?v=20261009-tg-android-4"></head>')
+        html = html.replace('</body>', '<script defer src="/site/static/site.js?v=20261009-tg-auto-code-7"></script><script defer src="/site/static/metrics.js?v=1"></script></body>')
         response = web.Response(text=html, status=meta['status'], content_type='text/html', headers={'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin', 'X-Frame-Options': 'SAMEORIGIN'})
         return response
 
     async def static(self, request):
         filename = request.match_info['filename']
-        if filename not in {'site.js', 'site.css', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png'}:
+        if filename not in {'site.js', 'site.css', 'metrics.js', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png'}:
             raise web.HTTPNotFound()
         return web.FileResponse(WEBSITE_DIR/filename, headers={'Cache-Control': 'public, max-age=31536000, immutable' if request.query.get('v') else 'no-cache'})

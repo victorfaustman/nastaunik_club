@@ -1,0 +1,25 @@
+const {chromium}=require(process.env.PLAYWRIGHT_PATH);
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+(async()=>{
+  const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+  const context=await browser.newContext({viewport:{width:375,height:812},userAgent:'Mozilla/5.0 Chrome/130.0.0.0 Safari/537.36'});
+  const page=await context.newPage(), events=[];
+  page.on('request',r=>{if(r.url().endsWith('/site/metrics'))events.push(r.postDataJSON());});
+  const base=process.env.SITE_URL;
+  await page.goto(base);await page.waitForResponse(r=>r.url().endsWith('/site/metrics')&&r.status()===204);
+  await page.evaluate(()=>history.pushState({},'','/library'));
+  await page.waitForTimeout(300);
+  assert.equal(events.length,2);assert.equal(events[1].path,'/library');assert.equal(events[0].visit,events[1].visit);
+  await page.evaluate(()=>history.replaceState({},'','/library?secret=private'));
+  await page.waitForTimeout(200);assert.equal(events.length,2);
+  await page.reload();await page.waitForTimeout(400);assert.equal(events.length,3);assert.equal(events[2].visit,events[0].visit);
+  await page.goto(base+'admin/?section=visitors');await page.getByRole('heading',{name:'Посещаемость сайта'}).waitFor();
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  fs.mkdirSync('artifacts/website',{recursive:true});await page.screenshot({path:'artifacts/website/metrics-mobile.png',fullPage:true});
+  await page.getByRole('link',{name:'30 дней',exact:true}).click();await page.getByRole('heading',{name:'Посещаемость сайта'}).waitFor();
+  await page.setViewportSize({width:1440,height:900});await page.screenshot({path:'artifacts/website/metrics-desktop.png',fullPage:true});
+  const dnt=await browser.newContext({extraHTTPHeaders:{DNT:'1'}});await dnt.addInitScript(()=>Object.defineProperty(navigator,'doNotTrack',{get:()=> '1'}));const dp=await dnt.newPage();let tracked=false;
+  dp.on('request',r=>{if(r.url().endsWith('/site/metrics'))tracked=true;});await dp.goto(base);await dp.waitForTimeout(300);assert(!tracked);
+  await browser.close();console.log('PASS anonymous tab visit, SPA, reload, privacy, mobile/desktop report, period filters, DNT');
+})().catch(e=>{console.error(e);process.exit(1)});
